@@ -17,6 +17,7 @@ import uuid
 import checkpoint as cp
 import router_policy as policy
 import telemetry
+import reserve
 
 ACTIVE = {'prepared', 'launching', 'running', 'validating', 'uncertain', 'review_required'}
 
@@ -203,7 +204,7 @@ def _run(command, root, environment, prompt, log, timeout, on_start):
 def dispatch(root, source, config_path, signals, override=None, trigger='boundary', execute=False, _held=False):
     with contextlib.nullcontext() if _held else exclusive(root):
         task, config = load_inputs(root, source, config_path)
-        if telemetry.assess(signals)['low']:
+        if reserve.blocked(reserve.assess(root, signals)):
             import monitor
             saved = monitor.stop_for_signals(root, signals)
             return {'action': 'pause', 'executed': False, 'normal_work_must_stop': True, 'checkpoint': saved, 'checkpoint_id': saved.get('checkpoint_id')}
@@ -220,7 +221,7 @@ def dispatch(root, source, config_path, signals, override=None, trigger='boundar
             raise cp.Fault('Bounded task ID was reused for a changed contract; review and assign a new task ID')
         if any(h['status'] == 'accepted' for h in history):
             return {'action': 'complete', 'reason': 'This bounded task already passed acceptance'}
-        decision = policy.decide(task, config, signals, history, current.get('current_worker'), override, trigger)
+        decision = policy.decide(task, config, signals, history, current.get('current_worker'), override, trigger, assessment=reserve.assess(root, signals), worker_assessor=lambda value: reserve.assess(root, value))
         if any(j['status'] not in ('completed', 'failed', 'cancelled') for j in task['jobs']):
             raise cp.Fault('Active jobs must finish or be reconciled before dispatch')
         if decision['action'] != 'launch' or not execute:
@@ -260,11 +261,11 @@ def dispatch(root, source, config_path, signals, override=None, trigger='boundar
             if worker.get('codex_home'):
                 import profiles
                 observed, profile_signals = profiles.worker_observation(worker, config)
-                if telemetry.assess(profile_signals)['low']:
+                if reserve.blocked(reserve.assess(root, profile_signals)):
                     import monitor
                     saved = monitor.stop_for_signals(root, profile_signals)
                     return dict(decision, action='pause', executed=False, normal_work_must_stop=True, checkpoint_id=saved['checkpoint_id'], reason='Selected account reserve reached; explicit reviewed handoff required')
-                if telemetry.assess(profile_signals)['statuses']['codex_plan'] != 'ok':
+                if reserve.assess(root, profile_signals)['statuses']['codex_plan'] != 'ok':
                     raise cp.Fault('Selected account allowance unknown; no plan worker launched')
             else:
                 observed = probe(worker.get('executable', 'codex'))
@@ -285,9 +286,9 @@ def dispatch(root, source, config_path, signals, override=None, trigger='boundar
             for r in fresh['records']:
                 r['guard'] = guard
             fresh['records'].extend(r for r in signals.get('records', []) if r.get('kind') != 'codex_plan')
-            fresh_decision = policy.decide(task, config, fresh, history, current.get('current_worker'), worker['id'], trigger)
+            fresh_decision = policy.decide(task, config, fresh, history, current.get('current_worker'), worker['id'], trigger, assessment=reserve.assess(root, fresh), worker_assessor=lambda value: reserve.assess(root, value))
             if fresh_decision['action'] != 'launch':
-                if fresh_decision['telemetry']['low']:
+                if reserve.blocked(fresh_decision['telemetry']):
                     import monitor
                     monitor.stop_for_signals(root, fresh)
                 return dict(fresh_decision, executed=False, normal_work_must_stop=True)

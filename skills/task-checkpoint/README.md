@@ -1,4 +1,4 @@
-# Task checkpoint 0.5.1
+# Task checkpoint 0.6.0
 
 Preserve unfinished work before account allowance runs low. Verify the saved work in a new context, account or device, then continue only after an explicit resume instruction. Install this directory per-user to make the workflow available in local Codex chats. Background collection and notifications require separate opt-in configuration. Installing the skill never switches accounts.
 
@@ -58,6 +58,14 @@ Opt in `readiness: {"enabled": true, "notifier": "macos"}` only on the intended 
 A ticket in the existing store targets the latest blocking reset plus 60 seconds. The existing minute poll may execute later. Re-read every window before notification. Native macOS command acceptance does not prove visible notification; Windows/Linux delivery currently needs a reviewed adapter. Missing reset, scheduler, native permission or local-file access => use manual fallback: inspect `HANDOFF.md`, check fresh allowance, then say `Resume from HANDOFF.md`.
 
 Notifications never implement task steps, clear stops, acquire continuation authority or switch accounts. Set lifecycle `completed`, `canceled` or `transferred` when that action is verified, so obsolete tickets retire. Automatic failed saves stop after three attempts; repair the cause before explicitly resetting that bounded retry sequence. See readiness procedure.
+
+## Explicitly continue past the reserve
+
+The default still saves/stops at 20%. After that verified stop, say `Continue to 10%` to request a task-local 10% reserve, or separately say `Continue until allowance is exhausted` to waive the numeric reserve for this task. The agent records the exact user choice and fresh account/window/reset observations, grants a pending override, then performs the usual fresh reviewed resume. No second approval is needed when the user has already explicitly chosen the mode.
+
+At 10%, the `ten` mode saves/stops again; choosing exhaustion remains a separate explicit choice. Exhaustion mode preserves milestones and respects actual provider refusal, other resource stops, ownership, uncertain jobs and permissions. A displayed 0% can be rounded; this mode follows actual usage acceptance rather than inventing more quota. Hard exhaustion can prevent a final save.
+
+[Exact CLI, expiry, revocation and maintenance commands](references/reserve.md). The shared default remains unchanged, other tasks inherit no override, and private grants are not transferred to another device. While stopped, quota reads and exact maintenance commands remain available without disabling hooks.
 
 ## Resume and transfer
 

@@ -56,7 +56,7 @@ def validate(plan):
     return plan
 
 
-def select(task, config, signals, journal):
+def select(task, config, signals, journal, root=None):
     """Return one immutable contract; accepted journal records are authoritative."""
     packages = validate(task['routing']['work_packages'])
     if journal.get('active') is not None:
@@ -80,7 +80,11 @@ def select(task, config, signals, journal):
             raise cp.Fault('Bounded ID changed after execution; use a new ID and review')
         if r['id'] in accepted:
             continue
-        decision = policy.decide(candidate, config, signals, attempts, journal.get('current_worker'))
+        if root is not None:
+            import reserve
+            decision = policy.decide(candidate, config, signals, attempts, journal.get('current_worker'), assessment=reserve.assess(root, signals), worker_assessor=lambda value: reserve.assess(root, value))
+        else:
+            decision = policy.decide(candidate, config, signals, attempts, journal.get('current_worker'))
         worker = next((w for w in config['workers'] if w['id'] == decision.get('worker_id')), None)
         return dict(decision, task=candidate, assignment={'model': worker['model'], 'effort': worker['effort'],
                     'reason': decision['reasons'], 'usage_savings': None} if worker else None)
@@ -114,7 +118,7 @@ def boundary(root, source, config_path, signals, execute=False):
     with cp.lock(guard), router.exclusive(root):
         task, config = router.load_inputs(root, source, config_path)
         journal = router.state(root)
-        choice = select(task, config, signals, journal)
+        choice = select(task, config, signals, journal, root)
         if choice['action'] in ('complete', 'pause') and 'task' not in choice:
             return choice
         candidate = choice['task']

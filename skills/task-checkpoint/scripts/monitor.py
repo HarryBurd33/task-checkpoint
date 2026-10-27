@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 
 import checkpoint as cp
 import telemetry
+import reserve
 
 LABEL = 'com.checkpoint-handoff.codex'
 TASK_NAME = 'Checkpoint-Handoff-Usage'
@@ -166,13 +167,13 @@ def evaluate_registered(state, signals):
                 if (store / 'signals.json').exists():
                     combined['records'] += [r for r in telemetry.from_checkpoint_signals(cp.read(store / 'signals.json'))['records'] if r.get('kind') != 'codex_plan']
                 marker = _marker(store, binding)
-                assessment = telemetry.assess(account_scope(combined, marker))
-                if assessment['low']:
+                assessment = reserve.assess(root, account_scope(combined, marker))
+                if reserve.blocked(assessment):
                     incident = _incident(assessment['low'])
                     if marker is None:
                         marker = {'schema_version': 1, 'task_id': binding['task_id'], 'project_id': binding['project_id'],
                                   'requested_at': cp.now(), 'incident_id': incident, 'checkpoint_status': 'pending'}
-                    marker.update(incident_id=incident, low_kinds=sorted(set(marker.get('low_kinds', [])) | {x['kind'] for x in assessment['low']}),
+                    marker.update(incident_id=incident, low_kinds=sorted(set(marker.get('low_kinds', [])) | set(reserve.kinds(assessment))),
                                   account_state=str(state.resolve()), automatic_resume=False)
                     affected_accounts(marker, assessment)
                     marker.pop('resources_recovered_at', None)
@@ -217,19 +218,38 @@ def evaluate_registered(state, signals):
     return status
 
 
-def stop_for_signals(root, signals):
+def stop_for_signals(root, signals, account_state=None):
     binding, store = cp.config(root)
-    assessment = telemetry.assess(signals)
-    if not assessment['low']:
+    assessment = reserve.assess(root, signals)
+    if not reserve.blocked(assessment):
         return None
     cp.atomic(store / 'signals.json', cp.encoded(signals))
     marker = _marker(store, binding) or {'schema_version': 1, 'task_id': binding['task_id'],
         'project_id': binding['project_id'], 'requested_at': cp.now(), 'checkpoint_status': 'pending'}
+    if account_state is not None:
+        marker['account_state'] = str(account_state.resolve())
     marker.update(incident_id=_incident(assessment['low']),
-        low_kinds=sorted(set(marker.get('low_kinds', [])) | {r['kind'] for r in assessment['low']}), automatic_resume=False)
+        low_kinds=sorted(set(marker.get('low_kinds', [])) | set(reserve.kinds(assessment))), automatic_resume=False)
     affected_accounts(marker, assessment)
     cp.atomic(store / 'automatic-stop.json', cp.encoded(marker))
     return _preserve(root, store, binding, marker, signals, assessment)
+
+
+def current_signals(root):
+    """Read the reviewed live source under an override, retaining local other resources."""
+    binding, store = cp.config(root)
+    local = store/'signals.json'
+    path = local
+    if (store/'allowance-override.json').exists():
+        grant = cp.read(store/'allowance-override.json')
+        if grant.get('state') != 'revoked':
+            path = Path(grant.get('signals_path', str(store/'allowance-override-signals.json')))
+    raw = cp.read(path)
+    signals = telemetry.from_checkpoint_signals(raw)
+    signals['accounts'] = raw.get('accounts', {})
+    if path.resolve() != local.resolve() and local.exists():
+        signals['records'] += [r for r in telemetry.from_checkpoint_signals(cp.read(local))['records'] if r.get('kind') != 'codex_plan']
+    return signals
 
 
 def validate_resume(root, store):
@@ -250,8 +270,8 @@ def validate_resume(root, store):
             r['guard'] = config.get('guard_percent', 20)
     if (store / 'signals.json').exists():
         signals['records'] += [r for r in telemetry.from_checkpoint_signals(cp.read(store / 'signals.json'))['records'] if r.get('kind') != 'codex_plan']
-    assessment = telemetry.assess(account_scope(signals, marker))
-    if assessment['low'] or not marker.get('low_kinds') or any(assessment['statuses'].get(k) != 'ok' for k in marker['low_kinds']):
+    assessment = reserve.assess(root, account_scope(signals, marker), allow_pending=True)
+    if reserve.blocked(assessment) or not marker.get('low_kinds') or any(assessment['statuses'].get(k) != 'ok' for k in marker['low_kinds']):
         raise cp.Fault('Automatic stop persists: refresh all affected resource readings and explicitly resume after recovery')
 
 

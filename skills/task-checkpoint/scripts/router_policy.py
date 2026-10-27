@@ -73,10 +73,10 @@ def validate_task(task):
     return task
 
 
-def _decide(task, config, signals, history, current_worker=None, override=None, trigger='boundary', now=None):
+def _decide(task, config, signals, history, current_worker=None, override=None, trigger='boundary', now=None, assessment=None, worker_assessor=None):
     validate_task(task)
     current = telemetry.timestamp(now) if now is not None else dt.datetime.now(dt.timezone.utc)
-    summary = telemetry.assess(signals, current, config.get('telemetry_max_age_seconds', 120))
+    summary = assessment if assessment is not None else telemetry.assess(signals, current, config.get('telemetry_max_age_seconds', 120))
     def result(action, reason, worker=None):
         return {'action': action, 'worker_id': worker.get('id') if worker else None,
                 'reasons': [reason], 'effort': worker.get('effort', 'medium') if worker else None,
@@ -105,7 +105,7 @@ def _decide(task, config, signals, history, current_worker=None, override=None, 
         return result('pause', 'retry budget exhausted')
     if summary['statuses']['context'] == 'low':
         return result('pause', 'context headroom low; checkpoint and renew context')
-    if summary['statuses']['codex_plan'] == 'low':
+    if summary.get('override_blocked') or summary['statuses']['codex_plan'] == 'low':
         return result('pause', 'account reserve reached; stop ordinary work across shared allowance')
     workers = config.get('workers', [])
     if not isinstance(workers, list):
@@ -161,7 +161,8 @@ def _decide(task, config, signals, history, current_worker=None, override=None, 
         billing = w.get('billing')
         worker_summary = summary
         if billing == 'plan' and w.get('account_fingerprint'):
-            worker_summary = telemetry.assess(signals.get('accounts', {}).get(w['account_fingerprint'], {'records': []}), current, config.get('telemetry_max_age_seconds', 120))
+            worker_signals = signals.get('accounts', {}).get(w['account_fingerprint'], {'records': []})
+            worker_summary = worker_assessor(worker_signals) if worker_assessor else telemetry.assess(worker_signals, current, config.get('telemetry_max_age_seconds', 120))
         kind = {'plan': 'codex_plan', 'api': 'api_balance', 'local': 'local_resource'}.get(billing)
         if kind is None:
             reasons.append('unsupported billing')
@@ -298,11 +299,11 @@ def validate_config(config):
 
 
 def decide(task, config, signals, history, current_worker=None, override=None,
-           trigger='boundary', now=None):
+           trigger='boundary', now=None, assessment=None, worker_assessor=None):
     """Fail closed on malformed configuration rather than leaking Python errors."""
     try:
         validate_config(config)
-        return _decide(task, config, signals, history, current_worker, override, trigger, now)
+        return _decide(task, config, signals, history, current_worker, override, trigger, now, assessment, worker_assessor)
     except cp.Fault:
         raise
     except (TypeError, ValueError, AttributeError, KeyError, IndexError, OverflowError) as exc:

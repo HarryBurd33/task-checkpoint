@@ -78,9 +78,20 @@ New bindings enable root HANDOFF output. An existing binding can opt in with `en
 | Cross-device continuation | Transfer actual source history + verified private checkpoint bundle + explicit external exports, then independently authenticate/review/acquire ownership |
 | Optional Usage Router | Retained for compatibility; separately authorized bounded work, qualification, tools/privacy/budget and ownership gates required |
 
-Manual mode needs no model/API call, scheduler or background service. Automatic mode requires the supported account-limit source, an awake/available host, access to the project, a configured collector and delivered/trusted hook coverage. A skill file alone cannot monitor usage or guarantee interruption. The default 20% is a preservation reserve, not an estimate of exact work remaining. Account allowance, context capacity, API spending and disk/memory signals are separate.
+Manual mode needs no model/API call, scheduler or background service. Automatic mode requires the supported account-limit source, an awake/available host, access to the project, a configured collector and delivered/trusted hook coverage. A skill file alone cannot monitor usage or guarantee interruption. The default 20% is a preservation reserve, not an estimate of exact work remaining. Explicit task-local overrides are described below. Account allowance, context capacity, API spending and disk/memory signals are separate.
 
 Readiness checks **never execute unfinished implementation** or clear a stop. Recovery requires fresh adequate readings and an explicit reviewed user resume. A scheduled target is not guaranteed execution/recovery time. No automatic account switching, credential transfer, paid fallback or purchase is performed. [Readiness setup and manual fallback](skills/task-checkpoint/references/readiness.md).
+
+## Continue beyond the preservation reserve
+
+The automatic verified stop at 20% remains the default. After it happens, explicitly tell the agent:
+
+- **“Continue to 10%”** — grant a pending task-local override, perform the normal reviewed resume, then save/stop again at <=10% in any applicable quota window.
+- **“Continue until allowance is exhausted”** — separately authorize waiving the numeric reserve for this task. Milestone saves continue; Codex's actual refusal, other resource stops, ownership and permissions remain enforced.
+
+An override never adds allowance, switches accounts or enables paid fallback. It binds current project/task/account/window/reset identities and expires at reset or lifecycle change. Grants are not transferable. Granting alone is not resumption. Hard exhaustion can prevent another checkpoint, so retain milestone saves. [Commands and revocation](skills/task-checkpoint/references/reserve.md).
+
+Quota reads and narrowly parsed maintenance CLI commands remain available during a stop, so hooks no longer need to be disabled merely to inspect, grant or resume. Ordinary commands and shell chains remain stopped.
 
 ## Test and verify
 

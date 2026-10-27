@@ -1,9 +1,9 @@
 ---
 name: task-checkpoint
-description: Preserve unfinished Codex work for explicit resumption across chats, accounts or devices. Use for checkpoint now, save and stop, prepare a handoff, explicit resume, or fresh low account allowance on an enabled project. A readiness check may notify after reset; it never resumes task implementation.
+description: Preserve unfinished Codex work for explicit resumption across chats, accounts or devices. Use for checkpoint now, save and stop, prepare a handoff, explicit resume, fresh low account allowance on an enabled project, or an explicit task-local reserve override to 10% or exhaustion. A readiness check may notify after reset; it never resumes task implementation.
 license: MIT
 metadata:
-  version: "0.5.1"
+  version: "0.6.0"
 ---
 
 # Task checkpoint
@@ -30,13 +30,25 @@ Maintain this semantic state during work. Missing conversation state cannot be r
 
 ## Save and stop
 
-At threshold, stop initiating ordinary work immediately. Permit only bounded preservation and necessary safe-boundary actions. For “save and stop”/pre-switch do the same. Do not claim to cancel jobs without evidence or mark the underlying objective complete.
+At the configured threshold (20% by default), save/verify and stop initiating ordinary work immediately. An explicit task-local reserve override can lower this to 10% or waive the numeric reserve; it requires the procedure below and never waives actual provider denial or other resources. Permit only bounded preservation and necessary safe-boundary actions. For “save and stop”/pre-switch do the same. Do not claim to cancel jobs without evidence or mark the underlying objective complete.
 
 1. Inspect current files/jobs and update semantic input from observed evidence.
 2. Run `scripts/checkpoint.py --root PROJECT checkpoint --input PROJECT/.checkpoint/input.json --trigger low-resource` (or `manual`, `save-and-stop`, `pre-switch`, `milestone`). Run `verify` and inspect the canonical generation and root `HANDOFF.md`. Root output must be enabled on legacy bindings; see setup. Preserve unrelated root handoff content.
 3. Verify hashes and the last-known-good generation. Inspect bundle contents before any authorized transfer. Pattern-based secret checks are incomplete; never assert they certify arbitrary binary/prose secret-free.
 4. On failure retain the previous valid generation, identify unsaved files and uncertain jobs, provide an emergency handoff (objective, verified commit, unsaved files, jobs, next action/verification, prior checkpoint), and stop ordinary work. Three automatic save attempts per failure sequence are allowed; further retries need repair and an explicit retry action.
 5. Report the root handoff and the verified generation. Stop ordinary work after a stop condition. A milestone save alone need not stop healthy work.
+
+## Explicit allowance-reserve override
+
+Keep the 20% default and its verified stop point. Only an explicit current user choice such as “continue to 10%” or “continue until allowance is exhausted” authorizes an override for this task. A request to implement this feature does not select an override for other tasks. Do not pre-arm grants before the initial stop.
+
+Read [reserve override commands](references/reserve.md). Use `reserve.py --root PROJECT grant --mode ten|exhaustion --signals FRESH-SIGNALS --reason USER-CHOICE --source CURRENT-USER-INSTRUCTION`. The grant records project/task, verified checkpoint, account/window/reset identities, reason/source and a pending state. Then perform the normal fresh review and explicit `checkpoint.py resume`; granting alone does not allow ordinary work. Reuse an existing verified lease only for the same owner; another owner remains blocking.
+
+`ten` continues above 10% and saves/stops again at <=10% in any applicable window. `exhaustion` waives the numeric preservation reserve, including a rounded 0% while usage remains allowed; Codex's actual denial still stops execution. Preserve semantic milestone checkpoints because hard exhaustion can prevent another save. Neither mode supplies more allowance, switches accounts or enables paid fallback.
+
+Unknown/stale/foreign/missing observations, incomplete saves, other resource stops, uncertain jobs/workers and ownership remain blocking. Grants expire at the first pinned reset, are invalidated by lifecycle changes, can be revoked, and stay out of portable bundles. Fresh resumption/current permissions are still required on another device. Revocation restores the configured default on the next check; it does not resume work.
+
+Stopped hooks permit quota reads and exact local checkpoint/reserve maintenance CLI commands. They continue to deny ordinary or chained commands. This maintenance path prevents a preservation stop from blocking the very controls needed to review it. It is a cooperative workflow guard, not an OS security sandbox.
 
 ## Readiness after reset
 

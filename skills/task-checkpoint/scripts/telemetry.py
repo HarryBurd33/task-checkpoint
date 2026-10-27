@@ -167,6 +167,7 @@ def from_checkpoint_signals(signals):
         for entry in entries:
             if isinstance(entry, dict):
                 record = dict(entry, kind=kind)
+                record.setdefault('source', 'legacy-checkpoint-signal-adapter')
                 record.setdefault('guard', LEGACY_GUARDS[old])
                 records.append(record)
     return {'records': records}

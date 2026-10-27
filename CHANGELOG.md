@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+- Keep the configured default reserve (20%) and add explicit task-local 10% or exhaustion overrides after the verified stop.
+- Pending grants require fresh reviewed resume and exclusive ownership; preserve context/API/resource/provider stops, unknown readings and job gates.
+- Pin account/window/reset and checkpoint identities; expire/revoke grants and exclude them from transfers.
+- Allow quota reads and narrow maintenance commands while ordinary work is stopped.
+- Restore only recorded temporarily disabled hooks, preserving unrelated edits and native trust.
+
 ## 0.5.1
 
 First public distribution of the reusable skill, extending the MIT checkpoint runtime:

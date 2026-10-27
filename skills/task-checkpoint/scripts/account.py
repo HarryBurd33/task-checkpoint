@@ -224,6 +224,33 @@ def uninstall(state, codex_home):
             'service': 'Boot out the launchd agent before removing its plist; native trust records are untouched'}
 
 
+def restore_hooks(state, codex_home, backup):
+    """Restore only exact owned definitions removed for maintenance; retain other edits."""
+    state, codex_home, backup = state.resolve(), codex_home.resolve(), backup.resolve()
+    if backup.parent != state or not backup.name.startswith('hooks-temporary-backup-'):
+        raise cp.Fault('Explicit temporary hook backup in the existing account state is required')
+    with cp.lock(state):
+        receipt = cp.read(state/'hooks-receipt.json')
+        original = cp.read(backup)
+        path = codex_home/'hooks.json'
+        current = cp.read(path)
+        if not isinstance(current.get('hooks'),dict):
+            raise cp.Fault('Unsupported hook configuration; preserve and reconcile')
+        restored = []
+        for event, definition in receipt['definitions'].items():
+            if definition not in original.get('hooks',{}).get(event,[]):
+                raise cp.Fault('Backup does not contain the exact owned definitions')
+            entries = current['hooks'].setdefault(event,[])
+            if not isinstance(entries,list):
+                raise cp.Fault('Unsupported hook event; no changes written')
+            if definition not in entries:
+                entries.append(definition);restored.append(event)
+        before = cp.sha(cp.content(path))
+        cp.atomic(path, cp.encoded(current))
+        result = {'restored':restored,'owned_definitions':len(receipt['definitions']), 'unrelated_entries_preserved':True,'native_trust_changed':False,'before_sha256':before,'after_sha256':cp.sha(cp.content(path))}
+        cp.atomic(state/'hooks-restoration.json',cp.encoded(result))
+        return result
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--state', type=Path, required=True)
@@ -234,11 +261,16 @@ def main():
     install_parser.add_argument('--project', type=Path, action='append', default=[])
     sub.add_parser('tick')
     sub.add_parser('status')
+    restore_parser = sub.add_parser('restore-hooks')
+    restore_parser.add_argument('--codex-home',type=Path,required=True)
+    restore_parser.add_argument('--backup',type=Path,required=True)
     remove_parser = sub.add_parser('uninstall')
     remove_parser.add_argument('--codex-home', type=Path, required=True)
     a = p.parse_args()
     if a.command == 'install':
         result = install(a.state, a.codex_home, a.python, a.project)
+    elif a.command == 'restore-hooks':
+        result = restore_hooks(a.state,a.codex_home,a.backup)
     elif a.command == 'tick':
         result = tick(a.state)
     elif a.command == 'uninstall':

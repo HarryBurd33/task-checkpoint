@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 
-VERSION = '0.5.1'
+VERSION = '0.6.0'
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 LIMIT = 16 * 1024 * 1024
 SENSITIVE = re.compile(r'(?i)(^|[./_-])(auth|credentials?|secrets?|id_rsa|id_ed25519)([./_-]|$)|(^|/)\.env($|\.)')
@@ -597,62 +597,60 @@ def resume(root, review_path, owner, capabilities):
     if set(s['task']['capabilities']) - set(capabilities):
         raise Fault('Device capability missing')
     c, store = config(root)
-    if (store / 'signals.json').exists() and policy(read(store / 'signals.json'))['checkpoint_required']:
-        raise Fault('Fresh low resource signal persists; stop and recheck before explicit resume')
+    if (store / 'signals.json').exists() or (store/'allowance-override.json').exists():
+        from monitor import current_signals
+        if policy(current_signals(root), root, allow_pending=True)['checkpoint_required']:
+            raise Fault('Fresh low resource signal persists; stop and recheck before explicit resume')
     resource = review.get('resources', {})
     if resource.get('adequate_for_bounded_action') is not True or not resource.get('evidence') or not 0 <= age(resource.get('observed_at')) <= 300:
         raise Fault('Fresh resource assessment required for bounded action; unknown is not zero')
     from monitor import validate_resume, acknowledge_resume
     validate_resume(root, store)
+    import reserve
+    reserve.validate_resume(root)
     with lock(store):
         if repo(root)['fingerprint'] != report['current_fingerprint']:
             raise Fault('Repository changed during resume')
-        claim = Ownership(root, c, store).acquire(owner)
+        ownership = Ownership(root, c, store)
+        if (store/'owner.json').exists():
+            claim = ownership.check()
+            if claim['owner'] != owner:
+                raise Fault('Task already owned by another agent; never steal its lease')
+        else:
+            claim = ownership.acquire(owner)
         receipt = {'checkpoint_id': s['id'], 'task_id': s['task_id'], 'review': redact(review), 'owner': claim, 'capabilities': list(capabilities), 'resumed_at': now()}
         atomic(store / 'resume.json', encoded(receipt))
+        reserve.activate(root)
         acknowledge_resume(root, store)
     return {'implementation_allowed': True, 'next_action': s['task']['next_action'], 'owner_scope': c['ownership'],
             'warning': 'Owner check is enforced by this runtime and wrapper; unrelated editors must cooperate.'}
 
-def policy(signals):
-    result = {'checkpoint_required': False, 'signals': {}, 'reason': [], 'router_extension_version': 1}
-    if 'records' in signals:
-        from telemetry import assess
-        assessment = assess(signals)
-        names = {'codex_plan': 'account_quota', 'api_balance': 'api_budget', 'context': 'context', 'local_resource': 'local_resource'}
-        result['signals'] = {names[k]: v for k, v in assessment['statuses'].items()}
-        result['checkpoint_required'] = bool(assessment['low'])
-        result['reason'] = sorted({names[r['kind']] for r in assessment['low']})
-        result['observations'] = assessment['records']
-        result['policy'] = 'Fresh observed signals only; no balance or reset inferred from token counts.'
-        return result
-    for kind, unit, threshold in [('account_quota', 'percent_remaining', 20), ('context', 'tokens_remaining', 8000), ('api_budget', 'usd_remaining', 1)]:
-        entries = signals.get(kind, [])
-        if not entries:
-            result['signals'][kind] = 'unknown'
-            continue
-        statuses = []
-        for r in entries:
-            if not isinstance(r.get('remaining'), (int, float)) or isinstance(r.get('remaining'), bool) or not math.isfinite(r['remaining']) or r['remaining'] < 0 or r.get('unit') != unit:
-                statuses.append('unknown-invalid')
-                continue
-            if kind == 'account_quota' and r['remaining'] > 100:
-                statuses.append('unknown-invalid')
-                continue
-            if not 0 <= age(r.get('observed_at')) <= 120 or r.get('resets_at') and age(r['resets_at']) >= 0:
-                statuses.append('unknown-stale-or-reset')
-                continue
-            guard = r.get('guard', threshold)
-            if not isinstance(guard, (int, float)) or isinstance(guard, bool) or not math.isfinite(guard) or guard < 0:
-                raise Fault('Invalid telemetry guard')
-            low = r['remaining'] <= guard
-            statuses.append('low' if low else 'adequate')
-            if low:
-                result['checkpoint_required'] = True
-                result['reason'].append(kind)
-        result['signals'][kind] = statuses
-    result['policy'] = 'Guard thresholds are adjustable reserves, not task completion estimates; unknown requires a manual boundary check.'
+def policy(signals, root=None, allow_pending=False):
+    from telemetry import assess, from_checkpoint_signals
+    normalized = from_checkpoint_signals(signals)
+    if 'records' not in signals:
+        # Named compatibility adapter for old explicit checkpoint observations.
+        # Identity is never invented, so anonymous legacy records cannot grant
+        # or satisfy a scoped allowance override.
+        for record in normalized['records']:
+            record.setdefault('source', 'legacy-checkpoint-signal-adapter')
+    if root is not None:
+        import reserve
+        assessment = reserve.assess(root, normalized, allow_pending=allow_pending)
+    else:
+        assessment = assess(normalized)
+    names = {'codex_plan':'account_quota','api_balance':'api_budget','context':'context','local_resource':'local_resource'}
+    reasons = {names[r['kind']] for r in assessment['low']}
+    if assessment.get('override_blocked'):
+        reasons.add('account_quota')
+    result = {'checkpoint_required':bool(assessment['low']) or assessment.get('override_blocked',False),
+        'signals':{names[k]:v for k,v in assessment['statuses'].items()},'reason':sorted(reasons),
+        'router_extension_version':1,'observations':assessment['records'],
+        'policy':'Configured reserve by default; explicit task-local override only after verified stop and reviewed resume. Unknown measurements are never invented.'}
+    if 'override' in assessment:
+        result['allowance_override'] = assessment['override']
     return result
+
 
 def run_boundary(root, source, command, capabilities):
     import router
@@ -671,10 +669,12 @@ def _run_boundary(root, source, command, capabilities):
     s, _ = latest(store)
     if receipt['task_id'] != c['task_id'] or receipt['checkpoint_id'] != s['id']:
         raise Fault('Resume verification required before running work')
-    if (store / 'signals.json').exists() and policy(read(store / 'signals.json'))['checkpoint_required']:
+    if (store / 'signals.json').exists() or (store/'allowance-override.json').exists():
         import monitor
-        saved = monitor.stop_for_signals(root, read(store / 'signals.json'))
-        return {'exit_code': 75, 'checkpoint': saved, 'child_status': 'not started; low resource signal'}
+        readings = monitor.current_signals(root)
+        if policy(readings, root)['checkpoint_required']:
+            saved = monitor.stop_for_signals(root, readings)
+            return {'exit_code': 75, 'checkpoint': saved, 'child_status': 'not started; low resource signal'}
     checkpoint(root, source, 'pre-switch')
     child = subprocess.Popen(command, cwd=str(root))
     interrupted = []
@@ -764,7 +764,7 @@ def main():
         print(json.dumps({'initialized': True, 'store': str(store), 'ownership_scope': a.ownership}))
         return
     if a.cmd == 'policy':
-        out = policy(read(a.input))
+        out = policy(read(a.input), root if (root/'.checkpoint/config.json').exists() else None)
     elif a.cmd == 'checkpoint':
         out = checkpoint(root, a.input, a.trigger)
     else:
