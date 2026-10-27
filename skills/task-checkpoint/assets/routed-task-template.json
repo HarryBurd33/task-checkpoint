@@ -1,0 +1,74 @@
+{
+  "completion_criteria": [],
+  "corrections": [],
+  "scope": [],
+  "decisions": [],
+  "completed": [],
+  "failures": [],
+  "questions": [],
+  "dependencies": [],
+  "jobs": [],
+  "tools": [],
+  "capabilities": [],
+  "artifacts": [],
+  "sources": [],
+  "observations": [],
+  "assumptions": [],
+  "logs": [],
+  "objective": "Continue the assigned bounded task",
+  "authorization": {
+    "scope": "Record the current authorized scope",
+    "source": "Current user instruction; verify again on resume"
+  },
+  "next_action": {
+    "description": "Inspect the named artifact and confirm its current state",
+    "verification": "Read the artifact and compare its hash with the manifest"
+  },
+  "metrics": {
+    "useful_completion": null,
+    "resume_accuracy": null,
+    "recovery_seconds": null,
+    "observed_usage": null,
+    "model_assignment": {
+      "model": "unknown",
+      "effort": "ordinary",
+      "reason": "Routine bounded task; escalate only for consequential ambiguity, failure or important review"
+    },
+    "account_quota": null,
+    "context_capacity": null,
+    "api_budget": null
+  },
+  "routing": {
+    "id": "one-bounded-task",
+    "task_class": "supply-a-qualified-task-class",
+    "complexity": "routine",
+    "risk": "low",
+    "required_tools": [],
+    "privacy": "public",
+    "allowed_providers": [
+      "openai"
+    ],
+    "budget": {
+      "max_attempts": 2,
+      "max_wall_seconds": 180,
+      "max_api_usd": null
+    },
+    "dependencies": [],
+    "estimated_work_seconds": 60,
+    "acceptance": [
+      {
+        "id": "project-tests",
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-v"
+        ]
+      }
+    ],
+    "escalation_reason": null
+  }
+}

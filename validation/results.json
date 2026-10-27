@@ -1,0 +1,22 @@
+{
+  "release": "0.5.1",
+  "local_tests": {
+    "command": "python3 -m unittest discover -s tests -v",
+    "tests": 226,
+    "passed": true,
+    "seconds": 188.787,
+    "python": "3.15.0",
+    "platform": "macOS"
+  },
+  "minimum_python_checks": {
+    "command": "python3 -m unittest test_runtime test_review_regressions -v",
+    "tests": 71,
+    "passed": true,
+    "seconds": 34.552,
+    "python": "3.9.6",
+    "platform": "macOS"
+  },
+  "native_notifications_display_verified": false,
+  "second_physical_device_verified": false,
+  "fixture_repetitions_included": true
+}

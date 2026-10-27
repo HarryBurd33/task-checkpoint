@@ -1,0 +1,10 @@
+.checkpoint/
+.codex/
+.private/
+.forge/
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+.DS_Store
+.install-receipt.json

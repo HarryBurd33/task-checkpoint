@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "queue_authority": "checkpoint:OWNER/REPOSITORY:TASK-SLUG",
+  "allowed_providers": [
+    "openai"
+  ],
+  "allow_paid": false,
+  "pause": false,
+  "unknown_telemetry": "manual",
+  "minimum_task_seconds": 30,
+  "cooldown_seconds": 300,
+  "switch_cost_seconds": 20,
+  "max_retries": 1,
+  "telemetry_max_age_seconds": 120,
+  "availability_max_age_seconds": 86400,
+  "qualification_max_age_seconds": 2592000,
+  "workers": [
+    {
+      "id": "gpt-6-luna",
+      "model": "gpt-6-luna",
+      "provider": "openai",
+      "billing": "plan",
+      "enabled": false,
+      "available": false,
+      "availability": {
+        "source": "Refresh with codex app-server model/list before enabling"
+      },
+      "tools": [],
+      "privacy": [
+        "public"
+      ],
+      "max_complexity": "routine",
+      "rank": 0,
+      "effort": "medium",
+      "interface": "codex_exec",
+      "sandbox": "read-only",
+      "qualification": {
+        "task_classes": [],
+        "passed": false,
+        "source": "Supply representative task evidence; demonstration covers only bounded-json-transform",
+        "samples": 0,
+        "acceptance_rate": 0,
+        "mean_total_seconds": 0,
+        "model": "gpt-6-luna",
+        "effort": "medium"
+      }
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "model": "gpt-6.1-sol",
+      "provider": "openai",
+      "billing": "plan",
+      "enabled": false,
+      "available": false,
+      "availability": {
+        "source": "Refresh with codex app-server model/list before enabling"
+      },
+      "tools": [],
+      "privacy": [
+        "public"
+      ],
+      "max_complexity": "routine",
+      "rank": 1,
+      "effort": "medium",
+      "interface": "codex_exec",
+      "sandbox": "read-only",
+      "qualification": {
+        "task_classes": [],
+        "passed": false,
+        "source": "Supply representative task evidence; demonstration covers only bounded-json-transform",
+        "samples": 0,
+        "acceptance_rate": 0,
+        "mean_total_seconds": 0,
+        "model": "gpt-6.1-sol",
+        "effort": "medium"
+      }
+    }
+  ]
+}
