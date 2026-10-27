@@ -45,7 +45,7 @@ def maintenance(event, root, account_state=None):
             if args[0] != '--root' or Path(os.path.expandvars(args[1])).expanduser().resolve() != root or args.count('--root') != 1:
                 return False
             allowed = {'checkpoint.py': {'inspect','verify','policy','checkpoint','resume','owner-check','release','recover-previous','refresh-handoff'},
-                       'reserve.py': {'status','grant','revoke'}}
+                       'reserve.py': {'status','grant','prepare-review','revoke'}}
             return args[2] in allowed[script.name]
         if script == scripts/'account.py' and account_state is not None:
             return args[0] == '--state' and Path(os.path.expandvars(args[1])).expanduser().resolve() == account_state.resolve() and args.count('--state') == 1 and args[2] in {'status','restore-hooks'}

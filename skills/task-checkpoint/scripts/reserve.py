@@ -245,6 +245,31 @@ def activate(root):
     cp.atomic(store / NAME, cp.encoded(value))
 
 
+def prepare_review(root, scope, source, evidence):
+    """Write only a fresh, issue-free operator review; never execute task work."""
+    if any(not isinstance(v,str) or not v.strip() for v in (scope,source,evidence)):
+        raise cp.Fault('Current authorization scope/source and truthful resource evidence are required')
+    binding,store,value = _load(root)
+    if value is None or value['state'] != 'pending_resume':
+        raise cp.Fault('A pending explicit allowance grant is required')
+    validate_resume(root)
+    _owner_gate(root,binding,store)
+    saved,report = cp.inspect(root)
+    if report['issues']:
+        raise cp.Fault('Reconcile these checkpoint issues before preparing a review: '+', '.join(report['issues']))
+    if any(j['status'] not in ('completed','failed','cancelled') for j in saved['task']['jobs']):
+        raise cp.Fault('Resolve uncertain jobs before preparing a review')
+    review = {'checkpoint_id':saved['id'],'task_id':saved['task_id'],
+        'next_action':saved['task']['next_action']['description'],'verification':saved['task']['next_action']['verification'],
+        'current_fingerprint':report['current_fingerprint'],'observed_at':cp.now(),
+        'authorization':{'confirmed':True,'scope':scope.strip(),'source':source.strip()},
+        'resources':{'adequate_for_bounded_action':True,'evidence':evidence.strip(),'observed_at':cp.now()},'resolutions':{}}
+    path=store/'allowance-resume-review.json'
+    cp.atomic(path,cp.encoded(review))
+    return {'review':str(path),'next_action':saved['task']['next_action'],'implementation_allowed':False,
+        'requires':'Explicit checkpoint.py resume with current owner and required capabilities'}
+
+
 def status(root):
     binding, store, value = _load(root)
     return {'project_id': binding['project_id'], 'task_id': binding['task_id'], 'override': value,
@@ -270,9 +295,11 @@ def main():
     sub = p.add_subparsers(dest='command', required=True)
     g = sub.add_parser('grant'); g.add_argument('--mode', choices=['ten', 'exhaustion'], required=True)
     g.add_argument('--signals', type=Path, required=True); g.add_argument('--reason', required=True); g.add_argument('--source', required=True)
+    review = sub.add_parser('prepare-review'); review.add_argument('--scope',required=True); review.add_argument('--source',required=True); review.add_argument('--resources-evidence',required=True)
     sub.add_parser('status'); r = sub.add_parser('revoke'); r.add_argument('--reason', required=True)
     a = p.parse_args(); root = a.root.resolve()
     if a.command == 'grant': value = grant(root, a.mode, cp.read(a.signals), a.reason, a.source, signals_path=a.signals)
+    elif a.command == 'prepare-review': value = prepare_review(root,a.scope,a.source,a.resources_evidence)
     elif a.command == 'revoke': value = revoke(root, a.reason)
     else: value = status(root)
     print(json.dumps(value, indent=2))

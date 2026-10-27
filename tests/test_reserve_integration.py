@@ -86,6 +86,20 @@ class ReserveIntegrationTests(unittest.TestCase):
         self.assertTrue(reserve.blocked(reserve.assess(self.root,fresh,now=future)))
         self.assertFalse(reserve.blocked(reserve.assess(self.root,fresh,now=future,allow_pending=True)))
 
+    def test_maintenance_review_then_real_resume_without_ordinary_shell_write(self):
+        self.grant();result=reserve.prepare_review(self.root,'Continue same fixture task','Current explicit user choice','Fresh quota read under selected reserve; bounded fixture')
+        self.assertFalse(result['implementation_allowed'])
+        self.assertEqual(Path(result['review']).parent,self.store)
+        self.assertTrue(cp.policy(self.signals(),self.root)['checkpoint_required'])
+        cp.resume(self.root,Path(result['review']),'fixture',[])
+        self.assertFalse(cp.policy(self.signals(),self.root)['checkpoint_required'])
+    def test_maintenance_review_cannot_skip_conflict_or_current_authority(self):
+        self.grant()
+        with self.assertRaises(cp.Fault):reserve.prepare_review(self.root,'','source','evidence')
+        (self.root/'work.txt').write_text('conflicting change')
+        with self.assertRaises(cp.Fault):reserve.prepare_review(self.root,'scope','source','evidence')
+        self.assertFalse((self.store/'allowance-resume-review.json').exists())
+
     def test_override_does_not_enter_transfer_bundle(self):
         import transfer,zipfile
         self.grant();archive=self.store/'bundle.zip';transfer.package(self.root,archive)
@@ -102,7 +116,7 @@ class HookMaintenanceTests(unittest.TestCase):
     def event(self,command):return {'tool_name':'exec_command','tool_input':{'cmd':command}}
     def command(self,script,verb):return shlex.join(['python3',str(self.scripts/script),'--root',str(self.root)]+shlex.split(verb))
     def test_exact_maintenance_and_quota_allowed(self):
-        for script,verb in [('reserve.py','status'),('reserve.py','grant --mode ten --reason user --source user --signals /tmp/signals.json'),('checkpoint.py','resume --review /tmp/review.json --owner current')]:
+        for script,verb in [('reserve.py','status'),('reserve.py','prepare-review --scope same --source user --resources-evidence fresh'),('reserve.py','grant --mode ten --reason user --source user --signals /tmp/signals.json'),('checkpoint.py','resume --review /tmp/review.json --owner current')]:
             self.assertTrue(hook.maintenance(self.event(self.command(script,verb)),self.root))
         self.assertTrue(hook.maintenance({'tool_name':'mcp__codex_app__get_usage_limits'},self.root))
     def test_ordinary_chained_foreign_and_injected_commands_rejected(self):

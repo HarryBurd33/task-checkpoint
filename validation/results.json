@@ -16,5 +16,11 @@
   },
   "independent_review": "Original held-out failures reproduced, repaired, and independently rechecked",
   "native_notification_display_verified": false,
-  "second_physical_device_verified": false
+  "second_physical_device_verified": false,
+  "maintenance_review_integration": {
+    "tests": 15,
+    "passed": true,
+    "python": "3.15",
+    "seconds": 5.244
+  }
 }

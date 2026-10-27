@@ -29,6 +29,14 @@ python3 SKILL/scripts/checkpoint.py --root PROJECT resume --review REVIEW --owne
 python3 SKILL/scripts/checkpoint.py --root PROJECT owner-check
 ```
 
+For an issue-free checkpoint, the maintenance path can prepare the review record without opening ordinary shell execution:
+
+```sh
+python3 SKILL/scripts/reserve.py --root PROJECT prepare-review --scope 'Continue the same authorized task' --source 'Current explicit user instruction' --resources-evidence 'Fresh readings under the selected reserve and bounded action assessment'
+```
+
+This writes only `allowance-resume-review.json` in the existing task store, after checking current hashes, fresh quota, job/owner gates and an empty unresolved-issue list. The scope/source/resource statement is a current operator attestation, not a claim that a tool can prove arbitrary permissions. It does not resume work. Supply this file to `checkpoint.py resume`. Conflicts, missing files or uncertain jobs require explicit reconciliation first; this helper cannot waive them.
+
 The existing matching lease may be retained; another owner is never replaced. If a collector makes a newer checkpoint during review, the original verified stop remains pinned and the latest checkpoint still needs its own current review. The CLI keeps the supplied signal path for fresh re-reading; direct API grants use their private snapshot, which becomes stale after 120 seconds. Refresh readings/regrant when needed. The resource review must truthfully assess the bounded action under the chosen reserve.
 
 ## Boundaries and revocation
@@ -46,7 +54,7 @@ Revocation returns to the configured reserve on the next check. It does not resu
 
 ## Maintenance while stopped
 
-Quota reads and exact local commands through installed `reserve.py` (`status`, `grant`, `revoke`) or `checkpoint.py` (`inspect`, `verify`, `policy`, `checkpoint`, `resume`, `owner-check`, `release`, `recover-previous`, `refresh-handoff`) remain available through covered PreToolUse/PostToolUse hooks. Use a direct `python3 /absolute/SKILL/scripts/FILE.py --root /absolute/PROJECT COMMAND ...` invocation. Shell chains, redirects, substitutions, arbitrary Python code, different scripts/projects and ordinary `run` commands receive no maintenance exemption. This is a cooperative workflow guard, not a general-purpose security sandbox.
+Quota reads and exact local commands through installed `reserve.py` (`status`, `grant`, `prepare-review`, `revoke`) or `checkpoint.py` (`inspect`, `verify`, `policy`, `checkpoint`, `resume`, `owner-check`, `release`, `recover-previous`, `refresh-handoff`) remain available through covered PreToolUse/PostToolUse hooks. Use a direct `python3 /absolute/SKILL/scripts/FILE.py --root /absolute/PROJECT COMMAND ...` invocation. Shell chains, redirects, substitutions, arbitrary Python code, different scripts/projects and ordinary `run` commands receive no maintenance exemption. This is a cooperative workflow guard, not a general-purpose security sandbox.
 
 If hooks were previously removed for this upgrade, restore only the exact definitions from the recorded temporary backup:
 
