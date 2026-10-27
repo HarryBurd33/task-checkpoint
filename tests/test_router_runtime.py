@@ -188,9 +188,24 @@ class RouterRuntimeTests(unittest.TestCase):
         self.config['workers'][0].update(interface='codex_exec', billing='plan', provider='openai')
         self.config['allowed_providers'].append('openai'); self.task['routing']['allowed_providers'].append('openai')
         self.prepare()
-        with mock.patch('codex_probe.probe', return_value={'account': {'account': {'type': 'apiKey'}}}):
+        # Authentication is the behavior under test. The optional Codex binary
+        # is not installed on every CI runner; make its availability explicit.
+        with mock.patch.object(router.shutil, 'which', return_value=sys.executable), mock.patch('codex_probe.probe', return_value={'account': {'account': {'type': 'apiKey'}}}) as probe:
             with self.assertRaisesRegex(cp.Fault, 'ChatGPT login'):
                 self.dispatch(override='small')
+            probe.assert_called_once()
+
+    def test_missing_codex_cli_never_launches_or_probes_account(self):
+        self.config['workers'][0].update(interface='codex_exec', billing='plan', provider='openai')
+        self.config['allowed_providers'].append('openai'); self.task['routing']['allowed_providers'].append('openai')
+        self.prepare()
+        with mock.patch.object(router.shutil, 'which', return_value=None), mock.patch('codex_probe.probe') as probe:
+            result = self.dispatch(override='small')
+        self.assertEqual(result['action'], 'manual')
+        self.assertFalse(result['executed'])
+        self.assertIn('unavailable', result['reason'])
+        probe.assert_not_called()
+        self.assertEqual(router.report(self.root)['attempts'], 0)
 
     def test_generic_command_never_bypasses_verified_adapter(self):
         self.config['workers'][0].update(interface='command', argv=[sys.executable, '-c', "raise AssertionError('must not run')"])

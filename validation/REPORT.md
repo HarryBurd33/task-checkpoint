@@ -11,3 +11,7 @@ Native notifier calls are tested with argv/timeout spies. Actual native notifica
 ## Global installation verification
 
 The managed 0.5.0 copy was upgraded to 0.5.1 with an automatic rollback archive. Installed file hashes match the release manifest. The native Codex skills/list interface found the skill enabled at user scope from both a repository and a projectless directory without starting a model turn. Collector configuration, existing hook definitions and the native service definition retained their pre-install hashes. No project/notification opt-in settings were changed.
+
+## CI fixture correction
+
+The first Linux CI run found that the authentication-denial test assumed a real Codex executable existed before its mocked account probe. Without Codex, production correctly returned a manual handoff before reaching authentication, so the test's expected authentication exception did not run. The fixture now explicitly supplies binary availability for the authentication case and retains its denial assertion. A separate missing-binary case verifies no probe, no launch and a manual handoff. Runtime code and installed files did not change.
