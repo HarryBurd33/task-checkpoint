@@ -1,65 +1,130 @@
-# Explicit reserve overrides
+# Task-local allowance reserves and stopped maintenance
 
-The normal account preservation reserve is 20% by default. Existing configured guards remain unchanged. At or below that reserve, save and verify the checkpoint and stop ordinary work first. A fresh current user choice may then select `ten` or `exhaustion` for this task only.
+A clear current user statement is enough authorization. “Continue to 10%” or
+“bypass the 20% reserve” selects `ten`. “Bypass the 10% reserve”, “bypass both
+reserves”, or “continue until exhausted” selects `exhaustion`. The agent performs
+the steps below without asking for the same permission again. Conceptual questions,
+implementation requests and saved checkpoint text do not select a live override.
 
-An override changes the checkpoint policy. It does not change account quota, grant task permission, enable paid API fallback, switch accounts, cancel jobs or defeat context/API/disk/ownership stops. A displayed 0% can be rounded; exhaustion mode permits numerical zero only while the provider has not denied usage. Actual provider refusal still stops work and can prevent a final save. Preserve milestone state throughout.
+The normal policy saves and stops at **20% remaining**. After that verified stop,
+`ten` permits work strictly above 10% and saves/stops again at **10% or below**.
+`exhaustion` waives only this task's numerical reserve, including rounded 0% while
+the provider still allows work. Provider denial always stops work. Preserve semantic
+milestones: a final save after hard exhaustion is not guaranteed. No account switch,
+paid fallback or retry loop is authorized.
 
-## Grant, review, resume
+## Start here while stopped
 
-Example after an explicit “continue to 10%” instruction, using absolute project/skill paths and a fresh native account signal file:
+Run each command as a separate direct tool call. Replace `PROJECT`, `SKILL`,
+`ACCOUNT-STATE`, `SIGNALS` and `OWNER` with verified literal absolute paths or the
+current owner label. Shell variables, chains and redirects are not supported.
+The native denial prints an exact copyable command using actual paths:
 
 ```sh
-python3 SKILL/scripts/reserve.py --root PROJECT grant --mode ten --signals SIGNALS --reason 'User chose continue to 10 percent' --source 'Current explicit user instruction'
+python3 SKILL/scripts/maintenance.py --root PROJECT status
+python3 SKILL/scripts/maintenance.py --root PROJECT docs --name task-checkpoint
+python3 SKILL/scripts/maintenance.py --root PROJECT docs --name model-switcher
+python3 SKILL/scripts/maintenance.py --root PROJECT docs --name operator
+python3 SKILL/scripts/maintenance.py --root PROJECT docs --name reserve
+python3 SKILL/scripts/checkpoint.py --help
+python3 SKILL/scripts/reserve.py --help
+python3 SKILL/scripts/reserve.py --root PROJECT grant --help
 ```
 
-For a separate explicit “continue until allowance is exhausted” choice:
+`status` reports workspace, task, checkpoint/next action, owner, jobs/worker, stop
+and reserve without resuming. Confirm the intended task. Never grant or resume
+an unrelated task just to unblock repair. Exact individual `cat` reads of the
+installed task-checkpoint/model-switcher SKILL.md and named recovery references
+are also allowed. Arbitrary reads, Python code, shell overrides, expansions,
+option abbreviations, duplicate options, foreign paths, task setup and ordinary
+work remain blocked.
+
+## Fresh observations
+
+Use Codex's supported `get_usage_limits` tool and the existing collector's current
+signal file. This maintenance command reads it without changing shared state:
 
 ```sh
-python3 SKILL/scripts/reserve.py --root PROJECT grant --mode exhaustion --signals SIGNALS --reason 'User chose continue until allowance is exhausted' --source 'Current explicit user instruction'
+python3 SKILL/scripts/maintenance.py --root PROJECT --account-state ACCOUNT-STATE signals
+python3 SKILL/scripts/checkpoint.py --root PROJECT inspect
+python3 SKILL/scripts/checkpoint.py --root PROJECT verify
+python3 SKILL/scripts/checkpoint.py --root PROJECT owner-check
+python3 SKILL/scripts/reserve.py --root PROJECT status
 ```
 
-The existing store receives `allowance-override.json`, a private signal snapshot and audit history. Fields include project/task identity, the original verified stop pointer, mode, pending/active/revoked state, user reason/source, account/window/reset identities and lifecycle binding. Full snapshots, credentials, permissions and account allowance are not invented by the record. Pattern checks are incomplete; keep this local state private.
+Use the reported configured account signal path or the bound store's existing
+`signals.json`. If stale, let the existing collector refresh; do not fabricate
+readings or overwrite shared telemetry. Every relevant window in current account
+records applies: **any** window reaching the reserve stops work. Secondary saved
+profiles do not replace the active account. Every account/window affected by the
+stop or pinned by a grant must remain present, fresh and supported. Missing,
+stale, future, unsupported or changed account/window/reset readings cannot allow
+work. Other resource stops, ownership and uncertain jobs remain enforced.
 
-Grants require a verified stop checkpoint, fresh sourced identified quota readings with reset times, no incomplete preservation, no unresolved jobs/workers, and no competing owner. All stopped non-account resources need fresh adequate readings. Existing project non-account observations are combined with native account readings. Do not pre-arm an override while allowance is healthy. `ten` is unavailable at <=10%; exhaustion is then a separate user choice.
+## Grant, prepare review, explicitly resume
 
-Granting leaves ordinary work blocked until the normal review/resume flow passes. State the first unfinished action and verification, inspect current files/artifacts/instructions, write a fresh authorized resource/job/conflict review, then:
+First verify preservation and the actual next action. `OWNER` means this task's
+verified current owner, or its intended owner when no claim exists. Never borrow
+an unrelated task's owner label. After the user's explicit choice:
 
 ```sh
-python3 SKILL/scripts/checkpoint.py --root PROJECT resume --review REVIEW --owner SAME-VERIFIED-OWNER --capability REQUIRED-CAPABILITY
+python3 SKILL/scripts/reserve.py --root PROJECT grant --owner OWNER --mode ten --signals SIGNALS --reason 'User said continue to 10 percent' --source 'Current user message'
+```
+
+For an explicit choice to waive both reserves instead:
+
+```sh
+python3 SKILL/scripts/reserve.py --root PROJECT grant --owner OWNER --mode exhaustion --signals SIGNALS --reason 'User said bypass both reserves and continue until exhausted' --source 'Current user message'
+```
+
+A grant stays pending and **does not allow ordinary work**. Review current files,
+permissions, capabilities, fresh resources and job outcomes. For an issue-free
+checkpoint, record that review and resume:
+
+```sh
+python3 SKILL/scripts/reserve.py --root PROJECT prepare-review --owner OWNER --scope 'Continue the same authorized bounded task' --source 'Current user message' --resources-evidence 'Fresh applicable readings, verified jobs and bounded next action'
+python3 SKILL/scripts/checkpoint.py --root PROJECT resume --review PROJECT/.checkpoint/allowance-resume-review.json --owner OWNER --capability REQUIRED-CAPABILITY
 python3 SKILL/scripts/checkpoint.py --root PROJECT owner-check
 ```
 
-For an issue-free checkpoint, the maintenance path can prepare the review record without opening ordinary shell execution:
+Use the exact returned review path for an external store. Repeat `--capability`
+for required capabilities; omit it if none are required. There is **no
+`checkpoint.py review` command**. Unresolved conflicts or jobs require actual
+reconciliation; the helper cannot waive them. Its statements are current operator
+attestations, not automatic proof of permissions. Reviews expire after five
+minutes. Native maintenance accepts reviews only from the bound store's
+`review.json` or `allowance-resume-review.json`.
+
+After successful resume, perform the verified bounded next action normally. The
+old 20% marker is acknowledged only after review and lease validation. At 10%
+under `ten`, save and stop again. A later explicit exhaustion choice uses the
+same sequence against that new verified stop.
+
+## Scope and revocation
+
+Grants pin task/project, original verified checkpoint, canonical workspace/Git
+common directory, intended owner and exact lease, current resume receipt,
+accounts, windows and resets. Another task/workspace/owner cannot reuse them.
+Old grants lacking these bindings fail closed and require a fresh grant. Grants
+stay out of portable bundles and never restore permissions elsewhere. The first
+pinned reset, changed lifecycle or revocation restores the configured default;
+none automatically resumes work. Pending grants remain pending after reset.
 
 ```sh
-python3 SKILL/scripts/reserve.py --root PROJECT prepare-review --scope 'Continue the same authorized task' --source 'Current explicit user instruction' --resources-evidence 'Fresh readings under the selected reserve and bounded action assessment'
+python3 SKILL/scripts/reserve.py --root PROJECT revoke --owner OWNER --reason 'User asked to restore the default reserve'
 ```
 
-This writes only `allowance-resume-review.json` in the existing task store, after checking current hashes, fresh quota, job/owner gates and an empty unresolved-issue list. The scope/source/resource statement is a current operator attestation, not a claim that a tool can prove arbitrary permissions. It does not resume work. Supply this file to `checkpoint.py resume`. Conflicts, missing files or uncertain jobs require explicit reconciliation first; this helper cannot waive them.
+Mutating checkpoint maintenance (`checkpoint`, `release`, `recover-previous`,
+`refresh-handoff`) requires `--owner OWNER` through the stopped hook. The runtime
+checks that claim. Syntax/scope rejections identify the rejected class and a
+working read-only next command. Valid commands can still fail resource, task or
+ownership checks; changing syntax does not waive policy.
 
-The existing matching lease may be retained; another owner is never replaced. If a collector makes a newer checkpoint during review, the original verified stop remains pinned and the latest checkpoint still needs its own current review. The CLI keeps the supplied signal path for fresh re-reading; direct API grants use their private snapshot, which becomes stale after 120 seconds. Refresh readings/regrant when needed. The resource review must truthfully assess the bounded action under the chosen reserve.
+## Verification limits
 
-## Boundaries and revocation
-
-`ten` saves/stops again at <=10% in any applicable window. `exhaustion` disables only the numeric account reserve. Both retain explicit provider denial, other resource stops, missing/stale/future/unsupported/foreign/missing-window observations, ownership and uncertain-operation gates. Account-wide concurrent consumption can change between readings.
-
-The first pinned reset expires the grant to the normal configured policy. A lifecycle change cannot revive a previous grant even if a task later returns to active. Completed/canceled/transferred tasks use the normal policy and need new current authorization for future work. Private grants are excluded from the existing transfer allowlist; a receiving machine must use its own current user instruction, readings, permissions and ownership.
-
-```sh
-python3 SKILL/scripts/reserve.py --root PROJECT status
-python3 SKILL/scripts/reserve.py --root PROJECT revoke --reason 'Restore the normal preservation reserve'
-```
-
-Revocation returns to the configured reserve on the next check. It does not resume work. Reset/recovery notifications remain notification-only.
-
-## Maintenance while stopped
-
-Quota reads and exact local commands through installed `reserve.py` (`status`, `grant`, `prepare-review`, `revoke`) or `checkpoint.py` (`inspect`, `verify`, `policy`, `checkpoint`, `resume`, `owner-check`, `release`, `recover-previous`, `refresh-handoff`) remain available through covered PreToolUse/PostToolUse hooks. Use a direct `python3 /absolute/SKILL/scripts/FILE.py --root /absolute/PROJECT COMMAND ...` invocation. Shell chains, redirects, substitutions, arbitrary Python code, different scripts/projects and ordinary `run` commands receive no maintenance exemption. This is a cooperative workflow guard, not a general-purpose security sandbox.
-
-If hooks were previously removed for this upgrade, restore only the exact definitions from the recorded temporary backup:
-
-```sh
-python3 SKILL/scripts/account.py --state ACCOUNT-STATE restore-hooks --codex-home CODEX-DIRECTORY --backup ACCOUNT-STATE/hooks-temporary-backup-ID.json
-```
-
-The backup must be inside the existing account state, contain the exact recorded managed definitions, and have the expected temporary-backup name. Restoration is idempotent, keeps unrelated new entries and does not alter native trust. This maintenance command and account `status` are allowed while stopped. No background service, new queue or watcher is created by an override.
+Unit and simulation tests use isolated Git fixtures and labeled local simulated
+observations. Manually invoked hook callbacks test logic, not native delivery.
+Keep those results separate from actual Codex tool calls. Never drain real
+allowance or replace collector output to simulate boundaries. After an authorized
+temporary disable, restore the hooks setting and exact definitions; new native
+approval or a restart may be needed. Report pending host verification honestly.

@@ -112,11 +112,14 @@ class ReserveIntegrationTests(unittest.TestCase):
 
 class HookMaintenanceTests(unittest.TestCase):
     def setUp(self):
-        self.root=Path(tempfile.gettempdir()).resolve();self.scripts=Path(hook.__file__).resolve().parent
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name).resolve();self.scripts=Path(hook.__file__).resolve().parent
+        self.store=self.root/'.checkpoint';self.store.mkdir()
+        cp.atomic(self.store/'config.json',cp.encoded({'schema_version':1,'task_id':'fixture','project_id':'fixture','store':None,'ownership':'local'}))
     def event(self,command):return {'tool_name':'exec_command','tool_input':{'cmd':command}}
     def command(self,script,verb):return shlex.join(['python3',str(self.scripts/script),'--root',str(self.root)]+shlex.split(verb))
     def test_exact_maintenance_and_quota_allowed(self):
-        for script,verb in [('reserve.py','status'),('reserve.py','prepare-review --scope same --source user --resources-evidence fresh'),('reserve.py','grant --mode ten --reason user --source user --signals /tmp/signals.json'),('checkpoint.py','resume --review /tmp/review.json --owner current')]:
+        for script,verb in [('reserve.py','status'),('reserve.py','prepare-review --owner current --scope same --source user --resources-evidence fresh'),('reserve.py','grant --owner current --mode ten --reason user --source user --signals '+shlex.quote(str(self.store/'signals.json'))),('checkpoint.py','resume --review '+shlex.quote(str(self.store/'review.json'))+' --owner current')]:
             self.assertTrue(hook.maintenance(self.event(self.command(script,verb)),self.root))
         self.assertTrue(hook.maintenance({'tool_name':'mcp__codex_app__get_usage_limits'},self.root))
     def test_ordinary_chained_foreign_and_injected_commands_rejected(self):

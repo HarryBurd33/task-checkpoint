@@ -1,3 +1,11 @@
+# 0.6.1
+
+- Added a read-only stopped-maintenance entry point and exact recovery commands in native denials.
+- Allowed bounded instruction reads and CLI help with strict argv, canonical-path and shell checks.
+- Bound reserve overrides to workspace and owner leases; fixed missing/stale telemetry and refreshed-source resume.
+- Documented natural-language task-local authorization and added isolated lifecycle and injection regressions.
+- Native desktop boundary simulation remains a separate verification requirement; callback tests do not establish host delivery.
+
 # Changelog
 
 ## 0.6.0

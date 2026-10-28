@@ -218,9 +218,9 @@ def evaluate_registered(state, signals):
     return status
 
 
-def stop_for_signals(root, signals, account_state=None):
+def stop_for_signals(root, signals, account_state=None, require_account=False):
     binding, store = cp.config(root)
-    assessment = reserve.assess(root, signals)
+    assessment = reserve.assess(root, signals, require_account=require_account)
     if not reserve.blocked(assessment):
         return None
     cp.atomic(store / 'signals.json', cp.encoded(signals))
@@ -262,7 +262,10 @@ def validate_resume(root, store):
         raise cp.Fault('Automatic preservation is incomplete; repair saving and retry monitor before resume')
     state = Path(marker['account_state']) if marker.get('account_state') else store
     config = cp.read(state / 'config.json') if marker.get('account_state') else {'guard_percent': 20}
-    raw_signals = cp.read(state / 'signals.json')
+    override = cp.read(store / 'allowance-override.json') if (store / 'allowance-override.json').exists() else None
+    # A grant pins its reviewed live source. Do not resurrect the stale snapshot
+    # that originally caused the stop after that source has been refreshed.
+    raw_signals = current_signals(root) if override and override.get('state') in ('pending_resume', 'active') else cp.read(state / 'signals.json')
     signals = telemetry.from_checkpoint_signals(raw_signals)
     signals['accounts'] = raw_signals.get('accounts', {})
     for r in signals['records']:

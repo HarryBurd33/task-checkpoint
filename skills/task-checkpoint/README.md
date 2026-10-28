@@ -1,4 +1,4 @@
-# Task checkpoint 0.6.0
+# Task checkpoint 0.6.1
 
 Preserve unfinished work before account allowance runs low. Verify the saved work in a new context, account or device, then continue only after an explicit resume instruction. Install this directory per-user to make the workflow available in local Codex chats. Background collection and notifications require separate opt-in configuration. Installing the skill never switches accounts.
 
@@ -90,3 +90,7 @@ python3 install.py --skills-dir "$HOME/.agents/skills" --uninstall
 This removes only the unchanged managed skill and retains checkpoints. If automatic activation was separately authorized, first remove the unchanged managed native service with `scripts/monitor.py --state ACCOUNT-STATE uninstall-service`, then remove owned account hooks with `scripts/account.py --state ACCOUNT-STATE uninstall --codex-home CODEX-DIRECTORY`. Preserve unrelated hooks and trust records. Do not run these commands on an unrelated installation merely to remove this staged folder. A staged folder may simply be retained or deleted after review.
 
 MIT license and [source attribution](ATTRIBUTION.md) are included. Validation distinguishes static, deterministic, fresh-model and native evidence; prior release claims are historical.
+
+## Native maintenance repair (0.6.1)
+
+A clear current instruction to continue to 10%, or bypass both reserves and continue until exhausted, is sufficient task-local authorization. The agent performs grant, fresh review and explicit resume without asking again. Start stopped recovery with `maintenance.py --root PROJECT status`, using literal absolute paths. It identifies the task and owner before any mutation. See the skill reserve reference for complete commands. Help and named installed instruction reads remain available while ordinary tools stay blocked. Grants now pin the canonical workspace, intended owner, exact lease and reviewed resume receipt in addition to task, checkpoint and account windows. Missing or stale required account readings block native tools and wrappers. Version 0.6.0 grants without these bindings require a fresh grant.

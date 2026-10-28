@@ -3,7 +3,7 @@ name: task-checkpoint
 description: Preserve unfinished Codex work for explicit resumption across chats, accounts or devices. Use for checkpoint now, save and stop, prepare a handoff, explicit resume, fresh low account allowance on an enabled project, or an explicit task-local reserve override to 10% or exhaustion. A readiness check may notify after reset; it never resumes task implementation.
 license: MIT
 metadata:
-  version: "0.6.0"
+  version: "0.6.1"
 ---
 
 # Task checkpoint
@@ -40,15 +40,15 @@ At the configured threshold (20% by default), save/verify and stop initiating or
 
 ## Explicit allowance-reserve override
 
-Keep the 20% default and its verified stop point. Only an explicit current user choice such as “continue to 10%” or “continue until allowance is exhausted” authorizes an override for this task. A request to implement this feature does not select an override for other tasks. Do not pre-arm grants before the initial stop.
+Keep the 20% default and its verified stop point. An explicit current user statement is sufficient authorization for this task: “continue to 10%” or “bypass the 20% reserve” selects `ten`; “bypass the 10% reserve”, “bypass both reserves”, or “continue until allowance is exhausted” selects `exhaustion`. Perform the maintenance sequence autonomously without asking for the same permission again. A conceptual question or implementation request alone does not select a live override. A request to implement this feature does not select an override for other tasks. Do not pre-arm grants before the initial stop.
 
-Read [reserve override commands](references/reserve.md). Use `reserve.py --root PROJECT grant --mode ten|exhaustion --signals FRESH-SIGNALS --reason USER-CHOICE --source CURRENT-USER-INSTRUCTION`. The grant records project/task, verified checkpoint, account/window/reset identities, reason/source and a pending state. Then perform the normal fresh review and explicit `checkpoint.py resume`; granting alone does not allow ordinary work. Reuse an existing verified lease only for the same owner; another owner remains blocking.
+Read [reserve override commands](references/reserve.md). Use `reserve.py --root PROJECT grant --mode ten|exhaustion --owner VERIFIED-CURRENT-OWNER --signals FRESH-SIGNALS --reason USER-CHOICE --source CURRENT-USER-INSTRUCTION`. The grant records project/task, verified checkpoint, account/window/reset identities, reason/source and a pending state. Then perform the normal fresh review and explicit `checkpoint.py resume`; granting alone does not allow ordinary work. Reuse an existing verified lease only for the same owner; another owner remains blocking.
 
 `ten` continues above 10% and saves/stops again at <=10% in any applicable window. `exhaustion` waives the numeric preservation reserve, including a rounded 0% while usage remains allowed; Codex's actual denial still stops execution. Preserve semantic milestone checkpoints because hard exhaustion can prevent another save. Neither mode supplies more allowance, switches accounts or enables paid fallback.
 
 Unknown/stale/foreign/missing observations, incomplete saves, other resource stops, uncertain jobs/workers and ownership remain blocking. Grants expire at the first pinned reset, are invalidated by lifecycle changes, can be revoked, and stay out of portable bundles. Fresh resumption/current permissions are still required on another device. Revocation restores the configured default on the next check; it does not resume work.
 
-Stopped hooks permit quota reads and exact local checkpoint/reserve maintenance CLI commands. They continue to deny ordinary or chained commands. This maintenance path prevents a preservation stop from blocking the very controls needed to review it. It is a cooperative workflow guard, not an OS security sandbox.
+While stopped, begin with `python3 /absolute/SKILL/scripts/maintenance.py --root /absolute/PROJECT status`; use the literal paths in the native denial message. This reports task, checkpoint, owner, jobs, stop and reserve without resuming. Use `maintenance.py ... docs --name reserve` for the full sequence. Top-level and subcommand `--help`, exact individual installed recovery-document reads, quota reads and validated local maintenance CLI commands remain available. There is no `checkpoint.py review` subcommand: use `reserve.py prepare-review`. A mismatched task or owner must never be resumed just to unblock a repair. They continue to deny ordinary or chained commands. This maintenance path prevents a preservation stop from blocking the very controls needed to review it. It is a cooperative workflow guard, not an OS security sandbox.
 
 ## Readiness after reset
 

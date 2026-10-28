@@ -1,26 +1,24 @@
 {
-  "release": "0.6.0",
-  "local_full_suite": {
-    "tests": 265,
+  "version": "0.6.1",
+  "full_suite": {
+    "tests": 289,
+    "seconds": 146.305,
     "passed": true,
-    "seconds": 112.633,
-    "python": "3.15",
-    "platform": "macOS"
+    "python": "3.15"
   },
-  "minimum_python": {
-    "tests": 56,
+  "maintenance_python39": {
+    "tests": 11,
     "passed": true,
-    "seconds": 17.61,
-    "python": "3.9.6",
-    "platform": "macOS"
+    "seconds": 8.271
   },
-  "independent_review": "Original held-out failures reproduced, repaired, and independently rechecked",
-  "native_notification_display_verified": false,
-  "second_physical_device_verified": false,
-  "maintenance_review_integration": {
-    "tests": 15,
-    "passed": true,
-    "python": "3.15",
-    "seconds": 5.244
-  }
+  "maintenance_python315": {
+    "tests": 11,
+    "passed": true
+  },
+  "automatic_and_callback_simulation": true,
+  "native_full_boundary_flow_verified": false,
+  "native_post_restore_status": "requires host approval/reload and verification",
+  "real_allowance_deliberately_drained": false,
+  "shared_telemetry_overwritten": false,
+  "independent_review": "Astra review: reported boundary gaps corrected; final bounded review found no high-impact blocker"
 }

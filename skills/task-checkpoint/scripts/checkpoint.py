@@ -599,7 +599,8 @@ def resume(root, review_path, owner, capabilities):
     c, store = config(root)
     if (store / 'signals.json').exists() or (store/'allowance-override.json').exists():
         from monitor import current_signals
-        if policy(current_signals(root), root, allow_pending=True)['checkpoint_required']:
+        readings = current_signals(root)
+        if policy(readings, root, allow_pending=True, require_account=requires_account(store, readings))['checkpoint_required']:
             raise Fault('Fresh low resource signal persists; stop and recheck before explicit resume')
     resource = review.get('resources', {})
     if resource.get('adequate_for_bounded_action') is not True or not resource.get('evidence') or not 0 <= age(resource.get('observed_at')) <= 300:
@@ -625,7 +626,12 @@ def resume(root, review_path, owner, capabilities):
     return {'implementation_allowed': True, 'next_action': s['task']['next_action'], 'owner_scope': c['ownership'],
             'warning': 'Owner check is enforced by this runtime and wrapper; unrelated editors must cooperate.'}
 
-def policy(signals, root=None, allow_pending=False):
+def requires_account(store, signals):
+    from telemetry import from_checkpoint_signals
+    return (store / 'allowance-override.json').exists() or any(r.get('kind') == 'codex_plan' for r in from_checkpoint_signals(signals)['records'])
+
+
+def policy(signals, root=None, allow_pending=False, require_account=False):
     from telemetry import assess, from_checkpoint_signals
     normalized = from_checkpoint_signals(signals)
     if 'records' not in signals:
@@ -636,7 +642,7 @@ def policy(signals, root=None, allow_pending=False):
             record.setdefault('source', 'legacy-checkpoint-signal-adapter')
     if root is not None:
         import reserve
-        assessment = reserve.assess(root, normalized, allow_pending=allow_pending)
+        assessment = reserve.assess(root, normalized, allow_pending=allow_pending, require_account=require_account)
     else:
         assessment = assess(normalized)
     names = {'codex_plan':'account_quota','api_balance':'api_budget','context':'context','local_resource':'local_resource'}
@@ -672,8 +678,9 @@ def _run_boundary(root, source, command, capabilities):
     if (store / 'signals.json').exists() or (store/'allowance-override.json').exists():
         import monitor
         readings = monitor.current_signals(root)
-        if policy(readings, root)['checkpoint_required']:
-            saved = monitor.stop_for_signals(root, readings)
+        required_account = requires_account(store, readings)
+        if policy(readings, root, require_account=required_account)['checkpoint_required']:
+            saved = monitor.stop_for_signals(root, readings, require_account=required_account)
             return {'exit_code': 75, 'checkpoint': saved, 'child_status': 'not started; low resource signal'}
     checkpoint(root, source, 'pre-switch')
     child = subprocess.Popen(command, cwd=str(root))
@@ -714,8 +721,8 @@ def _run_boundary(root, source, command, capabilities):
         for sig, handler in prior.items():
             signal.signal(sig, handler)
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def build_parser():
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument('--root', type=Path, default=Path.cwd())
     sub = parser.add_subparsers(dest='cmd', required=True)
     p = sub.add_parser('init')
@@ -725,28 +732,39 @@ def main():
     p.add_argument('--ownership', choices=['remote', 'local'], default='remote')
     p = sub.add_parser('checkpoint')
     p.add_argument('--input', type=Path, required=True)
+    p.add_argument('--owner')
     p.add_argument('--trigger', choices=['manual','milestone','pre-switch','error','shutdown','save-and-stop','low-resource'], default='manual')
     for name in ['verify', 'inspect']:
         p = sub.add_parser(name)
         p.add_argument('--previous', action='store_true')
     p = sub.add_parser('recover-previous')
     p.add_argument('--reason', required=True)
+    p.add_argument('--owner')
     p = sub.add_parser('resume')
     p.add_argument('--review', type=Path, required=True)
     p.add_argument('--owner', required=True)
     p.add_argument('--capability', action='append', default=[])
     sub.add_parser('enable-root-handoff')
-    sub.add_parser('refresh-handoff')
+    sub.add_parser('refresh-handoff').add_argument('--owner')
     sub.add_parser('owner-check')
-    sub.add_parser('release')
+    sub.add_parser('release').add_argument('--owner')
     p = sub.add_parser('policy')
     p.add_argument('--input', type=Path, required=True)
     p = sub.add_parser('run')
     p.add_argument('--input', type=Path, required=True)
     p.add_argument('--capability', action='append', default=[])
     p.add_argument('command', nargs=argparse.REMAINDER)
-    a = parser.parse_args()
+    return parser
+
+
+def main():
+    a = build_parser().parse_args()
     root = a.root.resolve()
+    if a.cmd in ('checkpoint', 'release', 'recover-previous', 'refresh-handoff') and a.owner is not None:
+        binding, store = config(root)
+        current = Ownership(root, binding, store).check()
+        if current['owner'] != a.owner:
+            raise Fault('Ownership denial: task is owned by another agent')
     if a.cmd == 'init':
         if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', a.task):
             raise Fault('Use lowercase task slug')

@@ -90,7 +90,38 @@ def _record_windows(value):
     return output
 
 
-def assess(root, signals, now=None, max_age_seconds=120, allow_pending=False):
+def _workspace(root):
+    root = Path(root).resolve()
+    common = Path(cp.git_text(root, 'rev-parse', '--git-common-dir'))
+    if not common.is_absolute():
+        common = root / common
+    return {'root': str(root), 'git_common_dir': str(common.resolve())}
+
+
+def _scope(root, binding, store, value, check_receipt=True):
+    if value.get('workspace') != _workspace(root):
+        raise cp.Fault('Allowance grant belongs to another workspace; grant does not transfer')
+    ownership = cp.Ownership(root, binding, store)
+    current = ownership.value(ownership.tip())
+    expected = value.get('active_owner')
+    if current.get('owner'):
+        current = ownership.check()
+        if value.get('intended_owner') and current.get('owner') != value['intended_owner']:
+            raise cp.Fault('Allowance grant belongs to another owner')
+        if value.get('grant_owner_token') and current.get('token') != value['grant_owner_token']:
+            raise cp.Fault('Ownership lease changed since the allowance grant')
+    elif (store / 'owner.json').exists() or value.get('grant_owner_token') or value['state'] == 'active':
+        raise cp.Fault('Allowance grant ownership is absent or changed')
+    if value['state'] == 'active':
+        if not expected or any(current.get(k) != expected.get(k) for k in ('owner', 'token')):
+            raise cp.Fault('Active allowance grant requires its exact resumed owner lease')
+        if check_receipt and (not (store / 'resume.json').exists() or
+                cp.sha(cp.content(store / 'resume.json')) != value.get('resume_receipt_sha256')):
+            raise cp.Fault('Active allowance grant resume receipt is absent or changed')
+    return current if current.get('owner') else None
+
+
+def assess(root, signals, now=None, max_age_seconds=120, allow_pending=False, require_account=False):
     """Assess measured data under a validated local grant, without changing inputs.
 
     Expired/revoked/terminal grants use the normal configured reserve. Unknown or
@@ -100,6 +131,9 @@ def assess(root, signals, now=None, max_age_seconds=120, allow_pending=False):
     current = _current(now)
     summary = telemetry.assess(signals, current, max_age_seconds)
     summary.update(override=None, override_blocked=False)
+    if require_account and summary['statuses']['codex_plan'] == 'unknown':
+        summary['override_blocked'] = True
+        summary['account_reason'] = 'Fresh supported account observations are required before work'
     binding, store, value = _load(root)
     if value is None:
         return summary
@@ -115,6 +149,7 @@ def assess(root, signals, now=None, max_age_seconds=120, allow_pending=False):
         summary['override']['effective'] = 'lifecycle-changed-default'
         return summary
     try:
+        _scope(root, binding, store, value)
         expected = _record_windows(value)
         if current < telemetry.timestamp(value['created_at']):
             raise cp.Fault('Override creation time is in the future')
@@ -143,22 +178,30 @@ def assess(root, signals, now=None, max_age_seconds=120, allow_pending=False):
     return summary
 
 
-def _owner_gate(root, binding, store):
+def _owner_gate(root, binding, store, intended_owner=None):
+    if intended_owner is not None and (not isinstance(intended_owner, str) or not intended_owner.strip()):
+        raise cp.Fault('Explicit current owner identity is required')
     journal = cp.read(store / 'router.json') if (store / 'router.json').exists() else {}
     if journal.get('active') is not None:
         raise cp.Fault('Active or uncertain worker must be reconciled first')
     owner = cp.Ownership(root, binding, store)
     if owner.value(owner.tip()).get('owner'):
-        owner.check()  # A free task or this exact current lease; never another owner.
+        current = owner.check()
+        if intended_owner is not None and current.get('owner') != intended_owner:
+            raise cp.Fault('Task already owned by another agent; never use its lease')
+        return current
+    if (store / 'owner.json').exists():
+        raise cp.Fault('Stale ownership receipt; reconcile before changing the allowance grant')
+    return None
 
 
-def grant(root, mode, signals, reason, source, now=None, signals_path=None):
+def grant(root, mode, signals, reason, source, now=None, signals_path=None, owner=None):
     if mode not in ('ten', 'exhaustion') or not isinstance(reason, str) or not reason.strip() or not isinstance(source, str) or not source.strip():
         raise cp.Fault('Explicit mode, current user reason and authorization source are required')
     current = _current(now)
     binding, store = cp.config(root)
     with cp.lock(store):
-        _owner_gate(root, binding, store)
+        claim = _owner_gate(root, binding, store, owner)
         if _lifecycle(store, binding) in TERMINAL:
             raise cp.Fault('Task is completed/canceled/transferred; new current authorization is required')
         saved, _ = cp.latest(store)
@@ -200,6 +243,8 @@ def grant(root, mode, signals, reason, source, now=None, signals_path=None):
         value = {'version': 1, 'id': uuid.uuid4().hex, 'project_id': binding['project_id'], 'task_id': binding['task_id'],
                  'checkpoint_id': saved['id'], 'stop_pointer': {k:v for k,v in cp.read(store/'latest.json').items() if k in ('id','hashes')},
                  'lifecycle_sha256': _lifecycle_hash(store), 'mode': mode, 'state': 'pending_resume',
+                 'workspace': _workspace(root), 'intended_owner': owner or (claim['owner'] if claim else None),
+                 'grant_owner_token': claim['token'] if claim else None,
                  'reason': reason.strip(), 'source': source.strip(), 'created_at': current.isoformat(),
                  'windows': [{'account_fingerprint': a, 'window': w, 'resets_at': reset} for (a, w), reset in sorted(windows.items())],
                  'automatic_resume': False, 'permissions_restored': False}
@@ -225,8 +270,9 @@ def validate_resume(root):
 def activate(root):
     """Called inside the normal resume gate after its receipt and lease exist."""
     binding, store, value = _load(root)
-    if value is None or value['state'] != 'pending_resume':
+    if value is None or value['state'] not in ('pending_resume', 'active'):
         return
+    _scope(root, binding, store, value, check_receipt=False)
     owner = cp.Ownership(root, binding, store).check()
     receipt = cp.read(store / 'resume.json')
     original, _ = cp.check_generation(store, value.get('stop_pointer', {}))
@@ -238,14 +284,30 @@ def activate(root):
     if not 0 <= cp.age(receipt.get('resumed_at')) <= 300:
         raise cp.Fault('Resume receipt stale; grant never authorizes ordinary work by itself')
     signals = cp.read(Path(value.get('signals_path', str(store / 'allowance-override-signals.json'))))
-    summary = assess(root, signals, allow_pending=True)
-    if blocked(summary):
+    summary = telemetry.assess(signals)
+    expected = _record_windows(value)
+    if _current() < telemetry.timestamp(value['created_at']):
+        raise cp.Fault('Override creation time is in the future')
+    expired = _current() >= min(telemetry.timestamp(v) for v in expected.values())
+    invalidated = _lifecycle(store, binding) in TERMINAL or value.get('lifecycle_sha256') != _lifecycle_hash(store)
+    if expired or invalidated:
+        if summary['statuses']['codex_plan'] != 'ok' or summary['low']:
+            raise cp.Fault('Grant expired or lifecycle changed; fresh adequate default resources are required')
+        value.update(state='revoked', revoked_at=cp.now(), revocation_reason='Expired or lifecycle changed at explicit resume')
+        cp.atomic(store / NAME, cp.encoded(value))
+        return
+    if _windows(summary) != expected:
+        raise cp.Fault('Account/window/reset changed; a fresh grant is required')
+    if any(r['kind'] != 'codex_plan' for r in summary['low']) or (value['mode'] == 'ten' and
+            any(r['remaining'] <= 10 for r in summary['records'] if r['kind'] == 'codex_plan')):
         raise cp.Fault('Fresh adequate resources under the chosen override are required for resume')
-    value.update(state='active', activated_at=cp.now(), resume_checkpoint_id=receipt['checkpoint_id'])
+    value.update(state='active', activated_at=cp.now(), resume_checkpoint_id=receipt['checkpoint_id'],
+                 active_owner={k: owner[k] for k in ('owner', 'token')},
+                 resume_receipt_sha256=cp.sha(cp.content(store / 'resume.json')))
     cp.atomic(store / NAME, cp.encoded(value))
 
 
-def prepare_review(root, scope, source, evidence):
+def prepare_review(root, scope, source, evidence, owner=None):
     """Write only a fresh, issue-free operator review; never execute task work."""
     if any(not isinstance(v,str) or not v.strip() for v in (scope,source,evidence)):
         raise cp.Fault('Current authorization scope/source and truthful resource evidence are required')
@@ -253,7 +315,9 @@ def prepare_review(root, scope, source, evidence):
     if value is None or value['state'] != 'pending_resume':
         raise cp.Fault('A pending explicit allowance grant is required')
     validate_resume(root)
-    _owner_gate(root,binding,store)
+    _owner_gate(root,binding,store,owner)
+    if owner is not None and value.get('intended_owner') and owner != value['intended_owner']:
+        raise cp.Fault('Allowance grant belongs to another intended owner')
     saved,report = cp.inspect(root)
     if report['issues']:
         raise cp.Fault('Reconcile these checkpoint issues before preparing a review: '+', '.join(report['issues']))
@@ -276,31 +340,41 @@ def status(root):
             'default_percent_if_unconfigured': 20, 'automatic_resume': False}
 
 
-def revoke(root, reason):
+def revoke(root, reason, owner=None):
     if not isinstance(reason, str) or not reason.strip():
         raise cp.Fault('Revocation reason required')
     binding, store = cp.config(root)
     with cp.lock(store):
-        _owner_gate(root, binding, store)
+        _owner_gate(root, binding, store, owner)
         _, _, value = _load(root)
         if value is None:
             return {'revoked': False, 'reason': 'No override exists'}
+        if owner is not None and value.get('intended_owner') and owner != value['intended_owner']:
+            raise cp.Fault('Allowance grant belongs to another intended owner')
+        if value.get('workspace') != _workspace(root):
+            raise cp.Fault('Allowance grant belongs to another workspace')
         value.update(state='revoked', revoked_at=cp.now(), revocation_reason=reason.strip())
         cp.atomic(store / NAME, cp.encoded(value))
     return {'revoked': True, 'automatic_resume': False}
 
 
-def main():
+def build_parser():
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('--root', type=Path, required=True)
     sub = p.add_subparsers(dest='command', required=True)
     g = sub.add_parser('grant'); g.add_argument('--mode', choices=['ten', 'exhaustion'], required=True)
     g.add_argument('--signals', type=Path, required=True); g.add_argument('--reason', required=True); g.add_argument('--source', required=True)
     review = sub.add_parser('prepare-review'); review.add_argument('--scope',required=True); review.add_argument('--source',required=True); review.add_argument('--resources-evidence',required=True)
     sub.add_parser('status'); r = sub.add_parser('revoke'); r.add_argument('--reason', required=True)
-    a = p.parse_args(); root = a.root.resolve()
-    if a.command == 'grant': value = grant(root, a.mode, cp.read(a.signals), a.reason, a.source, signals_path=a.signals)
-    elif a.command == 'prepare-review': value = prepare_review(root,a.scope,a.source,a.resources_evidence)
-    elif a.command == 'revoke': value = revoke(root, a.reason)
+    for command in (g, review, r):
+        command.add_argument('--owner', required=True)
+    return p
+
+
+def main():
+    a = build_parser().parse_args(); root = a.root.resolve()
+    if a.command == 'grant': value = grant(root, a.mode, cp.read(a.signals), a.reason, a.source, signals_path=a.signals, owner=a.owner)
+    elif a.command == 'prepare-review': value = prepare_review(root,a.scope,a.source,a.resources_evidence,owner=a.owner)
+    elif a.command == 'revoke': value = revoke(root, a.reason, owner=a.owner)
     else: value = status(root)
     print(json.dumps(value, indent=2))
 

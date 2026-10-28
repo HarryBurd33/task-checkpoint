@@ -107,3 +107,7 @@ The release does not claim every host/integration is verified. Actual native not
 ## License
 
 [MIT](LICENSE), copyright 2026 HarryBurd33. The same notice is included inside the installable skill. [Source attribution](skills/task-checkpoint/ATTRIBUTION.md).
+
+## Native maintenance repair (0.6.1)
+
+A clear current instruction to continue to 10%, or bypass both reserves and continue until exhausted, is sufficient task-local authorization. The agent performs grant, fresh review and explicit resume without asking again. Start stopped recovery with `maintenance.py --root PROJECT status`, using literal absolute paths. It identifies the task and owner before any mutation. See the skill reserve reference for complete commands. Help and named installed instruction reads remain available while ordinary tools stay blocked. Grants now pin the canonical workspace, intended owner, exact lease and reviewed resume receipt in addition to task, checkpoint and account windows. Missing or stale required account readings block native tools and wrappers. Version 0.6.0 grants without these bindings require a fresh grant.
