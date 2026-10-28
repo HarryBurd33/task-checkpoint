@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.1
+
+- Preserve a stopped task's pinned checkpoint on Interrupt and SessionEnd. Shutdown no longer creates a new generation that invalidates a later reviewed continuation grant.
+- Add eight stopped-shutdown regressions covering unchanged ownership/jobs and normal nonstopped shutdown preservation.
+- Acquire the collector preservation lock before resume ownership, receipt or grant mutations; report the scoped permission requirement without partially activating a grant when lock access is denied.
+- Apply configured task percentages, active grants and ownership validation to readiness scheduling and notification eligibility.
+- Document exact macOS background privacy attribution, native permission verification and scoped resume access; record actual native enrollment, exclusion and notification checks separately from simulated reset tests.
+
 ## 0.7.0
 
 - Add opt-in automatic enrollment for eligible committed Git workspaces, with root/chat exclusions and registration in the existing collector. No ownership, semantic progress or implementation schedule is invented.

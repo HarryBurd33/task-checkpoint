@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 
-VERSION = '0.7.0'
+VERSION = '0.7.1'
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 LIMIT = 16 * 1024 * 1024
 SENSITIVE = re.compile(r'(?i)(^|[./_-])(auth|credentials?|secrets?|id_rsa|id_ed25519)([./_-]|$)|(^|/)\.env($|\.)')
@@ -619,11 +619,15 @@ def resume(root, review_path, owner, capabilities):
     resource = review.get('resources', {})
     if resource.get('adequate_for_bounded_action') is not True or not resource.get('evidence') or not 0 <= age(resource.get('observed_at')) <= 300:
         raise Fault('Fresh resource assessment required for bounded action; unknown is not zero')
-    from monitor import validate_resume, acknowledge_resume
+    from monitor import validate_resume, resume_guard, _acknowledge_resume_locked
     validate_resume(root, store)
     import reserve
     reserve.validate_resume(root)
-    with lock(store):
+    # Match collector -> task-store lock order and fail before changing the
+    # lease, receipt or grant when the host sandbox cannot write its lock.
+    with resume_guard(root, store), lock(store):
+        validate_resume(root, store)
+        reserve.validate_resume(root)
         if repo(root)['fingerprint'] != report['current_fingerprint']:
             raise Fault('Repository changed during resume')
         ownership = Ownership(root, c, store)
@@ -636,7 +640,7 @@ def resume(root, review_path, owner, capabilities):
         receipt = {'checkpoint_id': s['id'], 'task_id': s['task_id'], 'review': redact(review), 'owner': claim, 'capabilities': list(capabilities), 'resumed_at': now()}
         atomic(store / 'resume.json', encoded(receipt))
         reserve.activate(root)
-        acknowledge_resume(root, store)
+        _acknowledge_resume_locked(root, store)
     return {'implementation_allowed': True, 'next_action': s['task']['next_action'], 'owner_scope': c['ownership'],
             'warning': 'Owner check is enforced by this runtime and wrapper; unrelated editors must cooperate.'}
 

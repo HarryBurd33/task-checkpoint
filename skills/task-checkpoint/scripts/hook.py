@@ -73,7 +73,9 @@ def main(account_state=None):
     if name in ('PreToolUse', 'PostToolUse') and maintenance(event, root, account_state):
         return {}
     stop = store / 'automatic-stop.json'
-    if name in ('PreToolUse', 'PostToolUse', 'PreCompact', 'Stop') and stop.exists():
+    # A persistent stop pins its verified generation until reviewed resume.
+    # Terminal boundary saves must not advance latest/HANDOFF behind that marker.
+    if name in ('PreToolUse', 'PostToolUse', 'PreCompact', 'Stop', 'Interrupt', 'SessionEnd') and stop.exists():
         marker = cp.read(stop)
         status = marker.get('checkpoint_status', 'unknown')
         return halt(name, recovery_message(event, root, account_state,

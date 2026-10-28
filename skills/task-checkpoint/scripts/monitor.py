@@ -4,6 +4,7 @@
 No model calls, task takeover, worktree restoration, queue, or automatic resumption.
 """
 import argparse
+from contextlib import contextmanager
 import datetime as dt
 import json
 import os
@@ -283,21 +284,45 @@ def validate_resume(root, store):
         raise cp.Fault('Automatic stop persists: refresh all affected resource readings and explicitly resume after recovery')
 
 
-def acknowledge_resume(root, store):
-    """Call only after the normal fresh-review/authorization/ownership gate passed."""
+@contextmanager
+def resume_guard(root, store):
+    """Take the collector lock before any ownership or resume-state mutation."""
     binding, _ = cp.config(root)
     marker = _marker(store, binding)
     if marker is None:
+        yield
         return
     guard = (Path(marker['account_state']) if marker.get('account_state') else store) / 'preservation'
-    guard.mkdir(parents=True, exist_ok=True)
-    with cp.lock(guard):
-        validate_resume(root, store)
-        marker = _marker(store, binding)
-        history = store / 'automatic-stop-history'
-        history.mkdir(exist_ok=True)
-        cp.atomic(history / (uuid.uuid4().hex + '.json'), cp.encoded(dict(marker, explicitly_resumed_at=cp.now())))
-        (store / 'automatic-stop.json').unlink()
+    # Enter separately: an access failure here must leave receipts, grants and
+    # ownership untouched, and must not mislabel a failure in the caller's body.
+    from contextlib import ExitStack
+    with ExitStack() as stack:
+        try:
+            guard.mkdir(parents=True, exist_ok=True)
+            stack.enter_context(cp.lock(guard))
+        except PermissionError as exc:
+            raise cp.Fault('Explicit resume needs write permission for the collector lock directory: '
+                           + str(guard) + '. Grant that scoped access through the host permission flow and retry with a fresh review; no resume state changed.') from exc
+        yield
+
+
+def _acknowledge_resume_locked(root, store):
+    """Caller holds resume_guard through the complete reviewed resume."""
+    binding, _ = cp.config(root)
+    validate_resume(root, store)
+    marker = _marker(store, binding)
+    if marker is None:
+        return
+    history = store / 'automatic-stop-history'
+    history.mkdir(exist_ok=True)
+    cp.atomic(history / (uuid.uuid4().hex + '.json'), cp.encoded(dict(marker, explicitly_resumed_at=cp.now())))
+    (store / 'automatic-stop.json').unlink()
+
+
+def acknowledge_resume(root, store):
+    """Call only after the normal fresh-review/authorization/ownership gate passed."""
+    with resume_guard(root, store):
+        _acknowledge_resume_locked(root, store)
 
 
 def windows_task_xml(python, script, state, user):

@@ -9,6 +9,7 @@ import sys
 import uuid
 import checkpoint as cp
 import telemetry
+import reserve
 
 TERMINAL = {'completed', 'canceled', 'cancelled', 'transferred', 'resumed'}
 
@@ -73,14 +74,19 @@ def update(root, signals, settings, now=None, deliver=None):
             cp.atomic(history/(ticket['id']+'.json'), cp.encoded(ticket)); ticket = None
         if ticket and ticket['status'] in {'notified','delivery-uncertain','delivery-failed','retired'}:
             return ticket
-        assessment = telemetry.assess(signals, now=current)
-        plan = [r for r in assessment['records'] if r.get('kind') == 'codex_plan']
         if ticket is None:
             ticket = {'version':1,'id':uuid.uuid4().hex,'project_id':binding['project_id'],'task_id':binding['task_id'],
                       'incident':incident,'created_at':current.isoformat(),'status':'pending',
                       'automatic_resume':False,'execution_authorized':False,'scheduler_id':settings.get('scheduler_id'),
                       'scheduler_kind':'existing-collector','schedule_status':'pending',
                       'required_windows':[], 'not_before':None}
+        # Readiness must use the same task baseline, grant and identity gates as
+        # preservation. Shared raw guards can disagree with an explicit local choice.
+        try:
+            assessment = reserve.assess(root, signals, now=current, require_account=True)
+        except (cp.Fault, OSError, ValueError, KeyError, TypeError) as exc:
+            return persist('user-action-required', reason='Task reserve policy unverified: ' + str(exc))
+        plan = [r for r in assessment['records'] if r.get('kind') == 'codex_plan']
         if not plan or any(not isinstance(r.get('account_fingerprint'),str) or not r['account_fingerprint'].strip()
                            or not isinstance(r.get('window'),str) or not r['window'].strip() for r in plan):
             return persist('user-action-required', schedule_status='unsupported', reason='Account/profile identity and named quota windows required; manually verify readiness')
@@ -88,6 +94,9 @@ def update(root, signals, settings, now=None, deliver=None):
         required = {tuple(x) for x in ticket['required_windows']}
         required.update(key(r) for r in plan)
         ticket['required_windows'] = [list(x) for x in sorted(required)]
+        if assessment.get('override_blocked'):
+            reason = (assessment.get('override') or {}).get('reason') or assessment.get('account_reason')
+            return persist('pending', reason=reason or 'Task reserve policy does not establish readiness')
         low = [r for r in plan if r['status'] == 'low']
         if low:
             if any(not r.get('resets_at') for r in low):

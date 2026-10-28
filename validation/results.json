@@ -1,37 +1,44 @@
 {
-  "version": "0.7.0",
+  "version": "0.7.1",
   "full_suite": {
     "python": "3.9.6",
-    "tests": 342,
-    "seconds": 97.862,
+    "tests": 362,
+    "seconds": 127.025,
     "passed": true
   },
-  "reserve_final": {
-    "python": "3.9.6",
-    "tests": 78,
-    "passed": true
-  },
-  "enrollment_final": {
+  "focused": {
     "python": [
-      "3.15",
-      "3.9.6"
+      "3.9.6",
+      "3.15"
     ],
-    "tests": 15,
+    "readiness_tests": 24,
+    "resume_lock_tests": 3,
+    "stopped_shutdown_tests": 8,
     "passed": true
   },
   "native": {
     "host": "macOS Codex app-server 0.164.0",
-    "maintenance_exit": 0,
-    "ordinary_denied": true,
-    "stop_retained": true,
-    "chat_identity_verified": true,
-    "hook_trust_unchanged": true,
-    "real_quota_boundary_transitions": false
+    "automatic_enrollment": true,
+    "root_exclusion": true,
+    "ordinary_stop": true,
+    "fractional_grant_review_resume": true,
+    "same_fixture_owner_lease": true,
+    "persistent_stop_shutdown": true,
+    "natural_collector_read": true,
+    "natural_collector_preservation_hashes": true,
+    "notification_display_user_observed": true,
+    "actual_account_depletion": false,
+    "actual_reset_notification": false,
+    "subagent_identity": true
+  },
+  "protected_files": {
+    "count": 28,
+    "unchanged": true
   },
   "exported_packaging": {
     "python": "3.9.6",
-    "tests": 28,
-    "seconds": 11.907,
+    "installer_tests": 2,
+    "automation_tests": 28,
     "passed": true
   }
 }

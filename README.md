@@ -1,4 +1,4 @@
-# task-checkpoint 0.7.0
+# task-checkpoint 0.7.1
 
 [![Tests](https://github.com/HarryBurd33/task-checkpoint/actions/workflows/test.yml/badge.svg)](https://github.com/HarryBurd33/task-checkpoint/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -157,7 +157,7 @@ python3 scripts/check_release.py
 
 The standard-library suite uses isolated repositories, simulated quota/clock signals and subprocess fixtures; it does not deliberately exhaust real allowance or make paid model/API calls. CI runs the suite on Linux and macOS. CI results, local checks, simulated platform adapters and prior fresh-context exercises are distinct evidence. [Validation report](validation/REPORT.md).
 
-The release does not claim every host/integration is verified. Actual native notification display, exact wake timing, a second physical laptop/account and native Windows/Linux behavior for this version require deployment verification. Files over 16 MiB, symlinks and external artifacts need an explicitly reviewed preservation route. Secret detection uses patterns and cannot certify arbitrary contents secret-free. A crash can leave a stale root projection; verification detects it and refresh is explicit.
+The release does not claim every host/integration is verified. Local macOS notification display was observed in native acceptance. Exact reset/wake timing, background notification display, a second physical laptop/account and native Windows/Linux application behavior still require deployment verification. Files over 16 MiB, symlinks and external artifacts need an explicitly reviewed preservation route. Secret detection uses patterns and cannot certify arbitrary contents secret-free. A crash can leave a stale root projection; verification detects it and refresh is explicit.
 
 ## License
 

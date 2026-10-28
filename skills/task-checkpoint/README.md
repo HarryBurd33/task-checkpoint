@@ -1,4 +1,4 @@
-# Task checkpoint 0.7.0
+# Task checkpoint 0.7.1
 
 Preserve unfinished work before account allowance runs low. Verify the saved work in a new context, account or device, then continue only after an explicit resume instruction. Install this directory per-user to make the workflow available in local Codex chats. Background collection and notifications require separate opt-in configuration. Installing the skill never switches accounts.
 
