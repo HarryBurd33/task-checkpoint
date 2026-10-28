@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 
-VERSION = '0.6.0'
+VERSION = '0.7.0'
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 LIMIT = 16 * 1024 * 1024
 SENSITIVE = re.compile(r'(?i)(^|[./_-])(auth|credentials?|secrets?|id_rsa|id_ed25519)([./_-]|$)|(^|/)\.env($|\.)')
@@ -204,6 +204,10 @@ def repo(root):
         raise Fault('Credential-bearing remote URL; use a credential helper')
     tracked = set(git(root, 'ls-files', '-z').decode().rstrip('\0').split('\0')) - {''}
     untracked = set(git(root, 'ls-files', '--others', '--exclude-standard', '-z').decode().rstrip('\0').split('\0')) - {''}
+    # Git reports an untracked nested repository as a directory ending in '/'.
+    # Keep that boundary visible without treating it as a regular artifact or
+    # descending into another repository's private state.
+    untracked = {name[:-1] if name.endswith('/') else name for name in untracked}
     changed = set(git(root, 'diff', 'HEAD', '--name-only', '-z', '--no-ext-diff').decode().rstrip('\0').split('\0')) - {''}
     root_output = root_enabled(root)
     root_plain = None
@@ -217,6 +221,9 @@ def repo(root):
             continue
         p = file_at(root, name)
         if p.exists():
+            if p.is_dir():
+                files[name] = {'unsupported': 'directory-or-nested-repository', 'preserved': False}
+                continue
             b = root_plain if name == 'HANDOFF.md' and root_plain is not None else content(p)
             files[name] = {'sha256': sha(b), 'executable': bool(p.stat().st_mode & 0o111)}
         else:
@@ -374,6 +381,10 @@ def checkpoint(root, source, trigger='manual', failpoint=None):
             check_generation(store, previous)  # Never promote over a corrupt current state.
             previous = {k: v for k, v in previous.items() if k != 'previous'}
         before = repo(root)
+        boundaries = [name for name, item in before['files'].items() if item.get('unsupported')]
+        if boundaries:
+            raise Fault('Unsaved directory or nested repository boundaries: ' + ', '.join(boundaries) +
+                        '; preserve these repositories separately or explicitly exclude them before checkpointing')
         ident = uuid.uuid4().hex
         folder = store / 'snapshots' / ident
         folder.mkdir(parents=True)
@@ -471,6 +482,9 @@ def inspect(root, previous=False, max_age=86400):
         issues.append('stale-checkpoint')
     if current['fingerprint'] != s['repository']['fingerprint']:
         issues.append('repository-changed')
+    for name, item in current['files'].items():
+        if item.get('unsupported'):
+            issues.append('unsaved-artifact-boundary:' + name)
     for item in s['artifacts']:
         if item.get('deleted') or not item.get('available', True):
             continue

@@ -1,13 +1,19 @@
-# Version 0.6.1 verification
+# Version 0.7.0 verification
 
-The complete local suite passed 289 tests on Python 3.15 in 146.305 seconds. Eleven focused maintenance/lifecycle regressions also passed on Python 3.9 (the callback interpreter) in 8.271 seconds. Twenty-eight packaging/automation tests passed in a separate recheck.
+The final complete suite passed **342 tests on Python 3.9.6 in 97.862 seconds**. An earlier Python 3.15 run passed 335 tests in 151.458 seconds; the subsequent percentage/configuration/retirement (27 tests) and final enrollment/Bash/identity (15 tests) suites passed on both interpreters. All 78 reserve tests passed together on 3.9.6. The clean exported distribution passed 28 packaging/automation tests in 11.907 seconds and the release manifest/privacy checks.
 
-Simulated account boundaries cover default above/at/below 20%, reviewed ten mode above/at/below 10%, exhaustion at zero while permitted and explicit provider denial. A bounded child process actually changes a fixture file after reviewed resume. Tests also cover pending grants, wrong owners/tasks/accounts/workspaces, stale/missing signals, shell injection and existing preservation/resume behavior.
+Isolated tests cover custom initial thresholds, fractional post-stop grants, zero versus exhaustion, pending grants and reviewed resume, identity/owner/lease/reset binding, stale or missing telemetry, provider denial, policy retirement without clearing stops, and bounded continuation. Enrollment covers idempotency, exclusions, preserved legacy bindings, explicit unrelated-chat routing, unknown identity conservatism, first-commit and collector-lock deferral.
 
-Hook subprocess callbacks and isolated simulated CLI flows are not native host-delivery proof. Before repair, actual desktop calls demonstrated blocked instruction/help reads and successful project-scoped inspection. Post-restoration host verification remains pending approval/reload. Full native simulated boundary verification is not claimed; no live shared telemetry was replaced and no real allowance was deliberately exhausted.
+Nested repositories are explicit unsaved artifact boundaries: inspection works and checkpoint promotion refuses to silently omit them. Collector tests cover dependency failure isolation, transfer identity checks, and the three-attempt preservation bound. Bash maintenance retains strict CLI/shell validation.
 
-An independent Astra review identified boundary gaps and confirmed the corrections. An unrelated live task binding, checkpoint and ownership were preserved.
+## Native acceptance
 
-Reproduce with `python3 -m unittest discover -s tests -v` and `python3 scripts/check_release.py`. Pattern-based public-file checks do not certify arbitrary data secret-free.
+Actual Codex CLI app-server 0.164.0 delivered trusted PreToolUse/PostToolUse callbacks on macOS in an isolated, unregistered Git fixture. The corrected native run executed maintenance status successfully (shell exit 0), denied an ordinary printf before execution, retained its persistent stop, and identified the actual root chat from event session_id despite a stale inherited CODEX_THREAD_ID. Existing global hook definitions and trust configuration were byte-identical before/after.
 
-Final diagnostic smoke check: status now reports current-worktree inspection failures (including an untracked nested Git repository) and invalid overrides without hiding verified task/owner information or relaxing resume. Thirteen final focused maintenance tests passed on Python 3.9 in 7.710 seconds. The preceding 289-test full run passed before these two additional diagnostic tests; GitHub CI runs the full final suite.
+The first native run found two defects missed by simulation: inherited environment identity was not the new root chat identity, and the macOS system Python launcher differed from sys.executable. Both were fixed, covered by regressions and verified in a second native run. Two bounded subscription turns used the configured Astra model at low effort; no paid API, live telemetry replacement or deliberate allowance exhaustion occurred.
+
+This proves native maintenance access, stop enforcement and identity delivery on this host. Percentage transitions and automatic enrollment/exclusion paths are isolated logic/callback tests; full native quota depletion, exact reset notification display/timing, native Windows/Linux and a second physical device/account remain unverified. A background macOS Documents access restriction still affects one pre-existing collector project and requires host permission repair.
+
+Independent review drove fixes for unfamiliar-chat stop bypass, unborn repositories, collector lock contention, enrollment preflight side effects and released-lease policy recovery. A reviewed live routing map separates 16 unrelated chats while retaining the two owning chats of a protected stopped task. No live task was resumed; protected checkpoint/ownership/stop files and hook definitions were hash-checked unchanged.
+
+Reproduce with `python3 -m unittest discover -s tests -v` and `python3 scripts/check_release.py`. Private ignored local evidence stays outside the public export; tracked files remain checked. Pattern checks cannot certify arbitrary contents secret-free.

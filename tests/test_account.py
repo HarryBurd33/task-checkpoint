@@ -99,7 +99,10 @@ class AccountTests(unittest.TestCase):
         config = cp.read(self.state / 'config.json')
         config['gh_executable'] = str(Path(sys.executable).resolve())
         config['projects'] = [{'root': str(self.root), 'task_id': 'fixture',
+                               'project_id': 'owner/private',
                                'private_transfer': {'repository': 'owner/private'}}]
+        cp.atomic(self.root/'.checkpoint/config.json', cp.encoded({'schema_version': 1,
+            'task_id': 'fixture', 'project_id': 'owner/private', 'ownership': 'local'}))
         cp.atomic(self.state / 'config.json', cp.encoded(config))
         observed = []
         def publish(*args):
@@ -112,29 +115,30 @@ class AccountTests(unittest.TestCase):
         self.assertIn(str(Path(sys.executable).resolve().parent), observed[0][:-1])
         self.assertEqual(result['transfers'][0]['status'], 'verified-test-double')
 
-    def test_unavailable_configured_gh_does_not_refresh_signals(self):
+    def test_unavailable_configured_gh_does_not_prevent_quota_refresh(self):
         with mock.patch('codex_probe.probe', return_value=self.reading()):
             account.tick(self.state)
         original = (self.state / 'signals.json').read_bytes()
         config = cp.read(self.state / 'config.json')
         config['gh_executable'] = str(self.root / 'missing-gh.exe')
         cp.atomic(self.state / 'config.json', cp.encoded(config))
-        with self.assertRaisesRegex(cp.Fault, 'GitHub CLI executable is unavailable'):
-            account.tick(self.state)
-        self.assertEqual((self.state / 'signals.json').read_bytes(), original)
-        self.assertTrue(cp.read(self.state / 'last-error.json')['old_signals_not_refreshed'])
+        with mock.patch('codex_probe.probe', return_value=self.reading()):
+            result = account.tick(self.state)
+        self.assertNotEqual((self.state / 'signals.json').read_bytes(), original)
+        self.assertIn('gh_executable', result['dependency_errors'])
 
-    def test_unavailable_configured_git_does_not_refresh_signals(self):
+    def test_unavailable_configured_git_refreshes_quota_but_blocks_preservation(self):
         with mock.patch('codex_probe.probe', return_value=self.reading()):
             account.tick(self.state)
         original = (self.state / 'signals.json').read_bytes()
         config = cp.read(self.state / 'config.json')
         config['git_executable'] = str(self.root / 'missing-git.exe')
         cp.atomic(self.state / 'config.json', cp.encoded(config))
-        with self.assertRaisesRegex(cp.Fault, 'Git executable is unavailable'):
-            account.tick(self.state)
-        self.assertEqual((self.state / 'signals.json').read_bytes(), original)
-        self.assertTrue(cp.read(self.state / 'last-error.json')['old_signals_not_refreshed'])
+        with mock.patch('codex_probe.probe', return_value=self.reading()):
+            result = account.tick(self.state)
+        self.assertNotEqual((self.state / 'signals.json').read_bytes(), original)
+        self.assertIn('git_executable', result['dependency_errors'])
+        self.assertEqual(result['preservation']['status'], 'preservation-unavailable')
 
     def test_failed_collection_never_refreshes_old_reading_or_buys_fallback(self):
         with mock.patch('codex_probe.probe', return_value=self.reading()):

@@ -1,30 +1,37 @@
 {
-  "version": "0.6.1",
+  "version": "0.7.0",
   "full_suite": {
-    "tests": 289,
-    "seconds": 146.305,
-    "passed": true,
-    "python": "3.15",
-    "scope": "Before the final read-only status resilience adjustment; two additional diagnostics covered in final focused suite"
-  },
-  "maintenance_python39": {
-    "tests": 11,
-    "passed": true,
-    "seconds": 8.271
-  },
-  "maintenance_python315": {
-    "tests": 11,
+    "python": "3.9.6",
+    "tests": 342,
+    "seconds": 97.862,
     "passed": true
   },
-  "automatic_and_callback_simulation": true,
-  "native_full_boundary_flow_verified": false,
-  "native_post_restore_status": "requires host approval/reload and verification",
-  "real_allowance_deliberately_drained": false,
-  "shared_telemetry_overwritten": false,
-  "independent_review": "Astra review: reported boundary gaps corrected; final bounded review found no high-impact blocker",
-  "final_maintenance_python39": {
-    "tests": 13,
-    "passed": true,
-    "seconds": 7.71
+  "reserve_final": {
+    "python": "3.9.6",
+    "tests": 78,
+    "passed": true
+  },
+  "enrollment_final": {
+    "python": [
+      "3.15",
+      "3.9.6"
+    ],
+    "tests": 15,
+    "passed": true
+  },
+  "native": {
+    "host": "macOS Codex app-server 0.164.0",
+    "maintenance_exit": 0,
+    "ordinary_denied": true,
+    "stop_retained": true,
+    "chat_identity_verified": true,
+    "hook_trust_unchanged": true,
+    "real_quota_boundary_transitions": false
+  },
+  "exported_packaging": {
+    "python": "3.9.6",
+    "tests": 28,
+    "seconds": 11.907,
+    "passed": true
   }
 }

@@ -1,4 +1,4 @@
-# task-checkpoint
+# task-checkpoint 0.7.0
 
 [![Tests](https://github.com/HarryBurd33/task-checkpoint/actions/workflows/test.yml/badge.svg)](https://github.com/HarryBurd33/task-checkpoint/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -17,7 +17,7 @@ python3 install.py --skills-dir "$HOME/.agents/skills" --repair
 
 The managed installer preserves an unchanged previous version for rollback and refuses to overwrite customized/unmanaged installations. The skill is installed at `~/.agents/skills/task-checkpoint`, Codex's user-wide skill directory. It is available on your next turn; if the skill list has not refreshed, restart Codex. [Official skill-discovery documentation](https://learn.chatgpt.com/docs/build-skills).
 
-Installing the skill makes its workflow available in local chats on this computer. Other computers/accounts and cloud environments need their own installation, files, permissions and independently provisioned authentication. Installation does not enable a background service or automatically bind every project.
+Installing the skill makes its workflow available in local chats on this computer. Other computers/accounts and cloud environments need their own installation, files, permissions and independently provisioned authentication. Installation alone does not enable a background service or enroll projects. Automatic enrollment is a separate account-level opt-in with root and chat exclusions.
 
 For PowerShell on Windows, replace the install command with:
 
@@ -39,6 +39,30 @@ Use any of these prompts in a writable project:
 The agent inspects existing instructions, task bindings, jobs and checkpoint state before acting. Checkpoints need a writable Git project with an initial commit. A plain chat without project/filesystem access can retain an emergency text handoff, but cannot claim it created a durable file snapshot.
 
 A copied HANDOFF is context, not permission. Another account does not inherit your access, credentials or active ownership.
+
+## Automatic enrollment and chat isolation
+
+With an existing enabled account collector and trusted hooks, opt in once through
+`enrollment.py --state ACCOUNT-STATE configure --enabled true`. Add repeated
+`--exclude-root PATH` or `--exclude-session CHAT-ID` options for exceptions.
+Exclusions affect new enrollment; they never clear an existing stop.
+
+On `SessionStart` or `PreToolUse`, a verified stable chat identity can enroll a
+writable Git repository with an initial commit. Enrollment creates an ignored
+`.checkpoint` binding and registers preservation with the existing collector.
+An unborn repository or busy collector lock defers enrollment without pausing
+the task. Enrollment does not create a service, schedule execution, acquire
+ownership or invent semantic progress. The agent must maintain real `input.json` state.
+
+Existing bindings remain intact. Reviewed chat mappings name both owning and explicitly unrelated chats.
+Only a recorded unrelated chat avoids inheriting the bound task's stop. The native
+hook `session_id` identifies the current root chat, including subagent hooks. An
+explicit event `thread_id` is accepted when no session ID is supplied; conflicting
+host fields fail closed. Inherited `CODEX_THREAD_ID` is ignored. Missing identity,
+unknown chat IDs and legacy mappings stay conservative.
+A new same-task continuation cannot bypass its stop. Another chat needs a separate checkout
+for its own checkpoint; it does not inherit permission or ownership.
+[Setup, exclusions and existing-chat repair](skills/task-checkpoint/references/enrollment.md).
 
 ## Manual command setup
 
@@ -72,7 +96,9 @@ New bindings enable root HANDOFF output. An existing binding can opt in with `en
 | Preserve unfinished work | Working files, distinct staged index blobs, binary/untracked/deleted files, recorded staging/modes; never silently overwrites destination edits |
 | Root handoff | Next unfinished action/verification first; progress, evidence, corrections, files, uncertain jobs and receiving prompt |
 | Ownership | Local or append-only remote Git coordination for cooperating agents; unknown jobs/active workers prevent release |
-| Automatic low-allowance save | Opt-in project registration plus a real collector and trusted hooks/wrapper; default <=20% remaining, existing thresholds preserved |
+| Automatic enrollment | Account opt-in, exclusions and stable host chat identity; eligible new Git workspaces join the existing collector |
+| Chat isolation | Reviewed mapping or enrolled binding scopes stops to verified chat IDs; unknown/legacy identities remain conservative |
+| Automatic low-allowance save | Real collector and delivered trusted hooks/wrapper; default <=20% remaining or an explicitly configured task-local percentage |
 | Readiness after reset | Existing minute collector processes a notification-only ticket targeting the latest blocking reset +60 seconds; fresh readings/lifecycle/ownership still required |
 | Native notification | macOS adapter supplied; command acceptance/display/permissions need host validation. Windows/Linux native notification requires another reviewed adapter |
 | Cross-device continuation | Transfer actual source history + verified private checkpoint bundle + explicit external exports, then independently authenticate/review/acquire ownership |
@@ -82,16 +108,45 @@ Manual mode needs no model/API call, scheduler or background service. Automatic 
 
 Readiness checks **never execute unfinished implementation** or clear a stop. Recovery requires fresh adequate readings and an explicit reviewed user resume. A scheduled target is not guaranteed execution/recovery time. No automatic account switching, credential transfer, paid fallback or purchase is performed. [Readiness setup and manual fallback](skills/task-checkpoint/references/readiness.md).
 
-## Continue beyond the preservation reserve
+## Choose how much allowance to preserve
 
-The automatic verified stop at 20% remains the default. After it happens, explicitly tell the agent:
+The default is **20% remaining** in any applicable account window. Before work,
+say **“Stop when 35% remains”** or choose any finite percentage from 0–100,
+including fractions. The agent can offer this choice when useful; you need not
+know the command or choose a percentage unless you want a different reserve.
+A clear current choice is enough authorization and is not requested again.
 
-- **“Continue to 10%”** — grant a pending task-local override, perform the normal reviewed resume, then save/stop again at <=10% in any applicable quota window.
-- **“Continue until allowance is exhausted”** — separately authorize waiving the numeric reserve for this task. Milestone saves continue; Codex's actual refusal, other resource stops, ownership and permissions remain enforced.
+Initial configuration uses `reserve.py ... configure --percent N` with the
+verified owner. It changes only this task's baseline. Existing stops, uncertain
+jobs/workers and pending grants prevent this configuration from bypassing a stop.
+After a verified stop, **“Continue until 7.5% remains”** uses a pending `percent`
+grant, fresh review and explicit resume. **“Continue to 10%”** remains supported.
+A numeric **0%** still stops at measured zero. **“Continue until allowance is
+exhausted”** separately waives the numeric reserve; actual provider refusal,
+other resource stops, ownership and permissions remain enforced.
 
-An override never adds allowance, switches accounts or enables paid fallback. It binds current project/task/account/window/reset identities and expires at reset or lifecycle change. Grants are not transferable. Granting alone is not resumption. Hard exhaustion can prevent another checkpoint, so retain milestone saves. [Commands and revocation](skills/task-checkpoint/references/reserve.md).
+Granting is not resumption. Grants bind task, workspace, owner, checkpoint and
+account windows, expire at reset or lifecycle changes, and stay out of portable
+bundles. Initial policies also stay local and require their exact owner lease. After an
+ownership handoff, explicitly retire the prior policy before reviewed resume;
+retirement preserves all stops and authority checks.
+No option adds allowance, switches accounts or enables paid fallback. Hard
+exhaustion can prevent another save, so retain milestone checkpoints.
+[Configuration, grant and recovery commands](skills/task-checkpoint/references/reserve.md).
 
-Quota reads and narrowly parsed maintenance CLI commands remain available during a stop, so hooks no longer need to be disabled merely to inspect, grant or resume. Ordinary commands and shell chains remain stopped.
+Quota reads, named installed instructions and narrowly parsed maintenance CLI
+commands remain available during a stop. Native `Bash` and `exec_command` names
+share the same strict checks; shell chains, substitutions and ordinary work
+remain blocked for the stopped task.
+
+## Inspection and collector repairs
+
+Inspection reports untracked nested repositories as unsaved boundaries instead
+of failing on Git's directory paths. A checkpoint refuses to claim those files
+were preserved; preserve the nested repository separately or explicitly exclude
+it. Collector quota refresh remains independent of optional transfer dependency
+failures and per-project preservation errors. Errors stay visible and affected
+scheduled work stays blocked. Python 3.9 remains supported.
 
 ## Test and verify
 

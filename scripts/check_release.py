@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Check the release manifest and reject private artifacts in the public tree."""
-import hashlib,json,re
+import hashlib,json,re,subprocess
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 skill=root/'skills/task-checkpoint'
@@ -9,9 +9,15 @@ actual={p.relative_to(skill).as_posix():hashlib.sha256(p.read_bytes()).hexdigest
 assert actual==manifest, 'Skill manifest differs from actual contents'
 assert 'MIT License' in (root/'LICENSE').read_text()
 assert (skill/'LICENSE').read_bytes()==(root/'LICENSE').read_bytes()
+# Ignored local evidence is outside the public export. Tracked private files still fail.
+ignored=set()
+if (root/'.git').exists():
+ result=subprocess.run(['git','ls-files','--others','--ignored','--exclude-standard','-z'],cwd=root,capture_output=True,check=True)
+ ignored=set(result.stdout.decode().split('\0'))
 for p in root.rglob('*'):
  if not p.is_file() or any(x in p.parts for x in ('.git','__pycache__')):continue
  rel=p.relative_to(root)
+ if rel.as_posix() in ignored:continue
  assert not any(x in rel.parts for x in ('.checkpoint','.private','.forge','.codex')), 'Private state in release: '+str(rel)
  assert not p.is_symlink(), 'Linked release file: '+str(rel)
  text=p.read_text(encoding='utf-8')

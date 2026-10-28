@@ -1,4 +1,16 @@
-# 0.6.1
+# Changelog
+
+## 0.7.0
+
+- Add opt-in automatic enrollment for eligible committed Git workspaces, with root/chat exclusions and registration in the existing collector. No ownership, semantic progress or implementation schedule is invented.
+- Scope stops using verified stable host thread identity and reviewed owning/unrelated chat mappings. Unknown and legacy identities stay conservative; legitimate stops and ownership remain intact.
+- Add finite task-local remaining percentages (0–100), both initial owner-bound configuration and post-stop continuation grants. Keep reviewed resume and provider/resource/ownership gates; numeric zero differs from exhaustion.
+- Add explicit policy retirement after owner release, preserving stops, grants and resume authority while preventing lease-bound policy deadlock.
+- Report nested Git directories as unsaved preservation boundaries instead of crashing inspection. Keep quota collection fresh when optional transfer dependencies fail and block affected dispatch after preservation errors.
+- Reconcile native Bash maintenance naming with exec_command using the same strict argument and scope checks. Retain Python 3.9 support.
+- Distinguish isolated tests, native event delivery and remaining deployment checks in the validation report; configuration alone is not native proof.
+
+## 0.6.1
 
 - Added a read-only stopped-maintenance entry point and exact recovery commands in native denials.
 - Allowed bounded instruction reads and CLI help with strict argv, canonical-path and shell checks.
@@ -6,7 +18,6 @@
 - Documented natural-language task-local authorization and added isolated lifecycle and injection regressions.
 - Native desktop boundary simulation remains a separate verification requirement; callback tests do not establish host delivery.
 
-# Changelog
 
 ## 0.6.0
 

@@ -25,7 +25,7 @@ DOCS = {
 VERBS = {
     'checkpoint.py': {'inspect', 'verify', 'policy', 'checkpoint', 'resume',
                       'owner-check', 'release', 'recover-previous', 'refresh-handoff'},
-    'reserve.py': {'status', 'grant', 'prepare-review', 'revoke'},
+    'reserve.py': {'status', 'grant', 'prepare-review', 'revoke', 'configure', 'retire-policy'},
     'maintenance.py': {'status', 'docs', 'signals'},
 }
 
@@ -78,8 +78,8 @@ def classify(event, root, account_state=None):
     name = event.get('tool_name', '').removeprefix('tools.')
     if name in ('mcp__codex_app__get_usage_limits', 'mcp__codex_app.get_usage_limits'):
         return True, 'quota read'
-    if name not in ('exec_command', 'functions.exec_command'):
-        return False, 'ordinary tool; maintenance uses exec_command'
+    if re.sub(r'[^a-z0-9]', '', name.lower()) not in ('execcommand', 'functionsexeccommand', 'toolsexeccommand', 'bash'):
+        return False, 'ordinary tool name=' + repr(name) + '; maintenance uses exec_command'
     inputs = event.get('tool_input', {})
     if isinstance(inputs, dict) and inputs.get('shell') is not None:
         return False, 'invalid maintenance scope: shell overrides are not allowed'
@@ -103,6 +103,10 @@ def classify(event, root, account_state=None):
             return False, 'ordinary command; only installed recovery scripts are exempt'
         chosen = shutil.which(argv[0]) if Path(argv[0]).name == argv[0] else argv[0]
         trusted = {Path(sys.executable).resolve()}
+        # macOS /usr/bin/python3 is an OS launcher: sys.executable becomes
+        # the CommandLineTools framework path, so Path.resolve alone differs.
+        if sys.platform == 'darwin' and Path('/usr/bin/python3').is_file():
+            trusted.add(Path('/usr/bin/python3').resolve())
         for runtime in ('python3', 'python'):
             found = shutil.which(runtime)
             if found:

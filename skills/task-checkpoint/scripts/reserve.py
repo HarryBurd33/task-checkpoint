@@ -10,7 +10,22 @@ import checkpoint as cp
 import telemetry
 
 NAME = 'allowance-override.json'
+POLICY_NAME = 'reserve-policy.json'
 TERMINAL = {'completed', 'canceled', 'cancelled', 'transferred'}
+
+
+def _threshold(mode, percent=None):
+    if mode == 'percent':
+        if not telemetry.number(percent) or not 0 <= percent <= 100:
+            raise cp.Fault('Percent reserve requires a finite number from 0 through 100')
+        return percent
+    if percent is not None:
+        raise cp.Fault('--percent is only valid with --mode percent')
+    if mode == 'ten':
+        return 10
+    if mode == 'exhaustion':
+        return None
+    raise cp.Fault('Explicit reserve mode ten, percent or exhaustion is required')
 
 
 def blocked(summary):
@@ -38,11 +53,12 @@ def _load(root):
     value = cp.read(path) if path.exists() else None
     if value is not None:
         if (value.get('version') != 1 or value.get('project_id') != binding['project_id']
-                or value.get('task_id') != binding['task_id'] or value.get('mode') not in ('ten', 'exhaustion')
+                or value.get('task_id') != binding['task_id'] or value.get('mode') not in ('ten', 'percent', 'exhaustion')
                 or value.get('state') not in ('pending_resume', 'active', 'revoked')
                 or not isinstance(value.get('windows'), list) or not value['windows']
                 or not value.get('reason') or not value.get('source')):
             raise cp.Fault('Invalid or foreign allowance override; inspect before continuing')
+        _threshold(value['mode'], value.get('percent'))
     return binding, store, value
 
 
@@ -121,6 +137,83 @@ def _scope(root, binding, store, value, check_receipt=True):
     return current if current.get('owner') else None
 
 
+
+def _policy(root):
+    """Validate a device/task/lease-local baseline; never import another owner's choice."""
+    binding, store = cp.config(root)
+    path = store / POLICY_NAME
+    if not path.exists():
+        return None
+    value = cp.read(path)
+    if (value.get('version') != 1 or value.get('project_id') != binding['project_id']
+            or value.get('task_id') != binding['task_id'] or value.get('workspace') != _workspace(root)
+            or not value.get('reason') or not value.get('source')
+            or value.get('lifecycle_sha256') != _lifecycle_hash(store)
+            or _lifecycle(store, binding) in TERMINAL):
+        raise cp.Fault('Invalid or foreign task-local reserve policy; inspect and explicitly reconcile')
+    _threshold('percent', value.get('percent'))
+    owner = cp.Ownership(root, binding, store).check()
+    expected = value.get('owner')
+    if not isinstance(expected, dict) or any(owner.get(k) != expected.get(k) for k in ('owner', 'token')):
+        raise cp.Fault('Task-local reserve policy belongs to another ownership lease')
+    return value
+
+
+def _baseline(root, signals, now=None, max_age_seconds=120):
+    value = _policy(root)
+    normalized = telemetry.from_checkpoint_signals(signals)
+    if value is not None:
+        for record in normalized['records']:
+            if record.get('kind') == 'codex_plan':
+                record['guard'] = value['percent']
+    summary = telemetry.assess(normalized, now, max_age_seconds)
+    summary['reserve_policy'] = value
+    return summary
+
+
+def configure(root, percent, owner, reason, source):
+    """Set the initial task-local numeric stop; cannot clear a stop or resume work."""
+    percent = _threshold('percent', percent)
+    if any(not isinstance(v, str) or not v.strip() for v in (owner, reason, source)):
+        raise cp.Fault('Explicit current owner, user reason and authorization source are required')
+    binding, store = cp.config(root)
+    with cp.lock(store):
+        claim = _owner_gate(root, binding, store, owner)
+        if claim is None:
+            raise cp.Fault('Configure requires the current verified exclusive owner lease')
+        if (store / 'automatic-stop.json').exists():
+            raise cp.Fault('An existing stop cannot be changed by configuration; use the reviewed grant/resume procedure')
+        if _lifecycle(store, binding) in TERMINAL:
+            raise cp.Fault('Task is completed/canceled/transferred; configuration cannot restore authority')
+        _, _, override = _load(root)
+        if override is not None and override['state'] != 'revoked':
+            raise cp.Fault('Reconcile the existing pending or active allowance grant before changing the baseline')
+        saved, _ = cp.latest(store)
+        if saved['project_id'] != binding['project_id'] or saved['task_id'] != binding['task_id']:
+            raise cp.Fault('Checkpoint belongs to another task')
+        if any(j['status'] not in ('completed', 'failed', 'cancelled') for j in saved['task']['jobs']):
+            raise cp.Fault('Active or uncertain task jobs must be reconciled first')
+        # Semantic input can contain newer jobs than the latest saved generation.
+        if (store / 'input.json').exists():
+            task = cp.read(store / 'input.json')
+            if any(j.get('status') not in ('completed', 'failed', 'cancelled') for j in task.get('jobs', [])):
+                raise cp.Fault('Active or uncertain input jobs must be reconciled first')
+        cp.verify_root(root, saved)
+        previous = store / POLICY_NAME
+        if previous.exists():
+            history = store / 'reserve-policy-history'
+            history.mkdir(exist_ok=True)
+            cp.atomic(history / (uuid.uuid4().hex + '.json'), cp.content(previous))
+        value = {'version': 1, 'project_id': binding['project_id'], 'task_id': binding['task_id'],
+                 'workspace': _workspace(root), 'percent': percent,
+                 'owner': {k: claim[k] for k in ('owner', 'token')},
+                 'lifecycle_sha256': _lifecycle_hash(store), 'created_at': cp.now(),
+                 'reason': reason.strip(), 'source': source.strip(),
+                 'automatic_resume': False, 'permissions_restored': False}
+        cp.atomic(previous, cp.encoded(value))
+        return value
+
+
 def assess(root, signals, now=None, max_age_seconds=120, allow_pending=False, require_account=False):
     """Assess measured data under a validated local grant, without changing inputs.
 
@@ -129,7 +222,8 @@ def assess(root, signals, now=None, max_age_seconds=120, allow_pending=False, re
     numeric low reading. A pending grant only informs an explicit resume review.
     """
     current = _current(now)
-    summary = telemetry.assess(signals, current, max_age_seconds)
+    summary = _baseline(root, signals, current, max_age_seconds)
+    require_account = require_account or summary['reserve_policy'] is not None
     summary.update(override=None, override_blocked=False)
     if require_account and summary['statuses']['codex_plan'] == 'unknown':
         summary['override_blocked'] = True
@@ -138,6 +232,8 @@ def assess(root, signals, now=None, max_age_seconds=120, allow_pending=False, re
     if value is None:
         return summary
     summary['override'] = {'mode': value['mode'], 'state': value['state'], 'id': value['id']}
+    threshold = _threshold(value['mode'], value.get('percent'))
+    summary['override']['percent'] = threshold
     if value['state'] == 'pending_resume' and not allow_pending:
         summary['override_blocked'] = True
         summary['override']['reason'] = 'Override granted; fresh explicit reviewed resume is still required'
@@ -169,8 +265,8 @@ def assess(root, signals, now=None, max_age_seconds=120, allow_pending=False, re
         if r.get('kind') != 'codex_plan':
             continue
         # _windows already verified freshness, source, identity and no hard denial.
-        r['status'] = 'low' if value['mode'] == 'ten' and r['remaining'] <= 10 else 'ok'
-        r['effective_guard'] = 10 if value['mode'] == 'ten' else None
+        r['status'] = 'low' if threshold is not None and r['remaining'] <= threshold else 'ok'
+        r['effective_guard'] = threshold
     states = [r['status'] for r in summary['records'] if r.get('kind') == 'codex_plan']
     summary['statuses']['codex_plan'] = 'low' if 'low' in states else 'ok'
     summary['low'] = [r for r in summary['records'] if r['status'] == 'low']
@@ -195,8 +291,9 @@ def _owner_gate(root, binding, store, intended_owner=None):
     return None
 
 
-def grant(root, mode, signals, reason, source, now=None, signals_path=None, owner=None):
-    if mode not in ('ten', 'exhaustion') or not isinstance(reason, str) or not reason.strip() or not isinstance(source, str) or not source.strip():
+def grant(root, mode, signals, reason, source, now=None, signals_path=None, owner=None, percent=None):
+    threshold = _threshold(mode, percent)
+    if not isinstance(reason, str) or not reason.strip() or not isinstance(source, str) or not source.strip():
         raise cp.Fault('Explicit mode, current user reason and authorization source are required')
     current = _current(now)
     binding, store = cp.config(root)
@@ -224,7 +321,7 @@ def grant(root, mode, signals, reason, source, now=None, signals_path=None, owne
         local_signals = store / 'signals.json'
         if local_signals.exists():
             combined['records'] += [r for r in telemetry.from_checkpoint_signals(cp.read(local_signals))['records'] if r.get('kind') != 'codex_plan']
-        summary = telemetry.assess(combined, current)
+        summary = _baseline(root, combined, current)
         windows = _windows(summary)
         if marker and set(marker.get('resource_accounts', [])) - {a for a, _ in windows}:
             raise cp.Fault('Readings do not include every stopped account')
@@ -234,8 +331,8 @@ def grant(root, mode, signals, reason, source, now=None, signals_path=None, owne
             raise cp.Fault('Other resource stops cannot be overridden')
         if not any(r['kind'] == 'codex_plan' for r in summary['low']):
             raise cp.Fault('The normal account reserve is not reached; do not pre-arm an override')
-        if mode == 'ten' and any(r['remaining'] <= 10 for r in summary['records'] if r['kind'] == 'codex_plan'):
-            raise cp.Fault('10% reserve already reached; only a separately explicit exhaustion choice can waive it')
+        if threshold is not None and any(r['remaining'] <= threshold for r in summary['records'] if r['kind'] == 'codex_plan'):
+            raise cp.Fault(str(threshold) + '% reserve already reached; choose an explicitly authorized lower reserve or exhaustion')
         previous = cp.read(store / NAME) if (store / NAME).exists() else None
         if previous:
             history = store / 'allowance-override-history'; history.mkdir(exist_ok=True)
@@ -248,6 +345,8 @@ def grant(root, mode, signals, reason, source, now=None, signals_path=None, owne
                  'reason': reason.strip(), 'source': source.strip(), 'created_at': current.isoformat(),
                  'windows': [{'account_fingerprint': a, 'window': w, 'resets_at': reset} for (a, w), reset in sorted(windows.items())],
                  'automatic_resume': False, 'permissions_restored': False}
+        if mode == 'percent':
+            value['percent'] = threshold
         if signals_path is not None:
             value['signals_path'] = str(Path(signals_path).resolve())
         cp.atomic(store / 'allowance-override-signals.json', cp.encoded(combined))
@@ -284,7 +383,7 @@ def activate(root):
     if not 0 <= cp.age(receipt.get('resumed_at')) <= 300:
         raise cp.Fault('Resume receipt stale; grant never authorizes ordinary work by itself')
     signals = cp.read(Path(value.get('signals_path', str(store / 'allowance-override-signals.json'))))
-    summary = telemetry.assess(signals)
+    summary = _baseline(root, signals)
     expected = _record_windows(value)
     if _current() < telemetry.timestamp(value['created_at']):
         raise cp.Fault('Override creation time is in the future')
@@ -298,8 +397,9 @@ def activate(root):
         return
     if _windows(summary) != expected:
         raise cp.Fault('Account/window/reset changed; a fresh grant is required')
-    if any(r['kind'] != 'codex_plan' for r in summary['low']) or (value['mode'] == 'ten' and
-            any(r['remaining'] <= 10 for r in summary['records'] if r['kind'] == 'codex_plan')):
+    threshold = _threshold(value['mode'], value.get('percent'))
+    if any(r['kind'] != 'codex_plan' for r in summary['low']) or (threshold is not None and
+            any(r['remaining'] <= threshold for r in summary['records'] if r['kind'] == 'codex_plan')):
         raise cp.Fault('Fresh adequate resources under the chosen override are required for resume')
     value.update(state='active', activated_at=cp.now(), resume_checkpoint_id=receipt['checkpoint_id'],
                  active_owner={k: owner[k] for k in ('owner', 'token')},
@@ -334,10 +434,58 @@ def prepare_review(root, scope, source, evidence, owner=None):
         'requires':'Explicit checkpoint.py resume with current owner and required capabilities'}
 
 
+
+def retire_policy(root, reason, source, owner=None):
+    """Explicitly archive a local baseline; preserve all stops and resume authority."""
+    if any(not isinstance(v, str) or not v.strip() for v in (reason, source)):
+        raise cp.Fault('Current user retirement reason and authorization source are required')
+    binding, store = cp.config(root)
+    with cp.lock(store):
+        authority = cp.Ownership(root, binding, store)
+        tip = authority.tip()
+        current = authority.value(tip)
+        if current.get('owner') and (not owner or owner != current['owner']):
+            raise cp.Fault('Policy retirement requires the explicit current owner; never use another lease')
+        _owner_gate(root, binding, store, owner)
+        saved, _ = cp.latest(store)
+        if saved['project_id'] != binding['project_id'] or saved['task_id'] != binding['task_id']:
+            raise cp.Fault('Checkpoint belongs to another task')
+        if any(j['status'] not in ('completed', 'failed', 'cancelled') for j in saved['task']['jobs']):
+            raise cp.Fault('Active or uncertain task jobs must be reconciled before policy retirement')
+        if (store / 'input.json').exists():
+            task = cp.read(store / 'input.json')
+            if any(j.get('status') not in ('completed', 'failed', 'cancelled') for j in task.get('jobs', [])):
+                raise cp.Fault('Active or uncertain input jobs must be reconciled before policy retirement')
+        path = store / POLICY_NAME
+        if not path.exists():
+            return {'retired': False, 'reason': 'No task-local reserve policy exists', 'automatic_resume': False}
+        raw = cp.content(path)
+        history = store / 'reserve-policy-history'
+        history.mkdir(exist_ok=True)
+        ident = uuid.uuid4().hex
+        archived = history / (ident + '.json')
+        cp.atomic(archived, raw)
+        if authority.tip() != tip:
+            raise cp.Fault('Ownership changed during policy retirement; policy preserved')
+        cp.atomic(history / (ident + '-retirement.json'), cp.encoded({
+            'retired_at': cp.now(), 'project_id': binding['project_id'], 'task_id': binding['task_id'],
+            'reason': reason.strip(), 'source': source.strip(), 'owner': current.get('owner'),
+            'policy_sha256': cp.sha(raw), 'automatic_resume': False, 'permissions_restored': False}))
+        path.unlink()
+        return {'retired': True, 'archive': str(archived), 'automatic_resume': False,
+                'stops_preserved': True, 'permissions_restored': False}
+
+
 def status(root):
     binding, store, value = _load(root)
-    return {'project_id': binding['project_id'], 'task_id': binding['task_id'], 'override': value,
-            'default_percent_if_unconfigured': 20, 'automatic_resume': False}
+    result = {'project_id': binding['project_id'], 'task_id': binding['task_id'], 'override': value,
+              'default_percent_if_unconfigured': 20, 'automatic_resume': False}
+    try:
+        result['reserve_policy'] = _policy(root)
+    except (cp.Fault, OSError, ValueError, KeyError, TypeError) as exc:
+        result['reserve_policy_error'] = str(exc)
+        result['implementation_allowed'] = False
+    return result
 
 
 def revoke(root, reason, owner=None):
@@ -361,7 +509,17 @@ def revoke(root, reason, owner=None):
 def build_parser():
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('--root', type=Path, required=True)
     sub = p.add_subparsers(dest='command', required=True)
-    g = sub.add_parser('grant'); g.add_argument('--mode', choices=['ten', 'exhaustion'], required=True)
+    config = sub.add_parser('configure')
+    config.add_argument('--percent', type=float, required=True)
+    config.add_argument('--owner', required=True)
+    config.add_argument('--reason', required=True)
+    config.add_argument('--source', required=True)
+    retire = sub.add_parser('retire-policy')
+    retire.add_argument('--owner')
+    retire.add_argument('--reason', required=True)
+    retire.add_argument('--source', required=True)
+    g = sub.add_parser('grant'); g.add_argument('--mode', choices=['ten', 'percent', 'exhaustion'], required=True)
+    g.add_argument('--percent', type=float, help='Task-local remaining allowance percentage (0..100); requires --mode percent')
     g.add_argument('--signals', type=Path, required=True); g.add_argument('--reason', required=True); g.add_argument('--source', required=True)
     review = sub.add_parser('prepare-review'); review.add_argument('--scope',required=True); review.add_argument('--source',required=True); review.add_argument('--resources-evidence',required=True)
     sub.add_parser('status'); r = sub.add_parser('revoke'); r.add_argument('--reason', required=True)
@@ -372,7 +530,9 @@ def build_parser():
 
 def main():
     a = build_parser().parse_args(); root = a.root.resolve()
-    if a.command == 'grant': value = grant(root, a.mode, cp.read(a.signals), a.reason, a.source, signals_path=a.signals, owner=a.owner)
+    if a.command == 'configure': value = configure(root, a.percent, a.owner, a.reason, a.source)
+    elif a.command == 'retire-policy': value = retire_policy(root, a.reason, a.source, owner=a.owner)
+    elif a.command == 'grant': value = grant(root, a.mode, cp.read(a.signals), a.reason, a.source, signals_path=a.signals, owner=a.owner, percent=a.percent)
     elif a.command == 'prepare-review': value = prepare_review(root,a.scope,a.source,a.resources_evidence,owner=a.owner)
     elif a.command == 'revoke': value = revoke(root, a.reason, owner=a.owner)
     else: value = status(root)

@@ -102,11 +102,13 @@ def tick(state):
         original_path = os.environ.get('PATH')
         try:
             dependency_dirs = []
+            dependency_errors = {}
             for label, key in (('Git', 'git_executable'), ('GitHub CLI', 'gh_executable')):
                 executable = config.get(key)
                 if executable:
                     if not Path(executable).is_absolute() or not Path(executable).is_file():
-                        raise cp.Fault('Configured ' + label + ' executable is unavailable; repair the user dependency')
+                        dependency_errors[key] = 'Configured ' + label + ' executable is unavailable; repair the user dependency'
+                        continue
                     dependency_dirs.append(str(Path(executable).parent))
             if dependency_dirs:
                 os.environ['PATH'] = os.pathsep.join(dependency_dirs + [original_path or ''])
@@ -134,18 +136,32 @@ def tick(state):
             cp.atomic(state / 'signals.json', cp.encoded(signals))
             signals_promoted = True
             import monitor
-            preservation = monitor.evaluate_registered(state, signals)
+            # Quota collection must not become stale because an optional transfer
+            # dependency or one project's preservation path failed. Do not dispatch
+            # work when preservation could not be evaluated.
+            preservation_error = None
+            try:
+                if 'git_executable' in dependency_errors:
+                    raise cp.Fault(dependency_errors['git_executable'])
+                preservation = monitor.evaluate_registered(state, signals)
+            except Exception as exc:
+                preservation_error = type(exc).__name__
+                preservation = {'status': 'preservation-unavailable', 'failure_type': preservation_error,
+                                'save_success_not_claimed': True}
             models = [{'model': m['model'], 'efforts': m.get('supportedReasoningEfforts', [])}
                       for m in observed['models'].get('data', [])]
             cp.atomic(state / 'models.json', cp.encoded({'observed_at': observed['observed_at'], 'models': models}))
             status = {'last_success': cp.now(), 'source': observed['source'], 'auth_type': 'chatgpt',
-                      'telemetry': telemetry.assess(signals), 'preservation': preservation, 'scheduled': []}
+                      'telemetry': telemetry.assess(signals), 'preservation': preservation, 'scheduled': [],
+                      'dependency_errors': dependency_errors}
+            failed_tasks = {item.get('task_id') for item in preservation.get('projects', [])
+                            if item.get('status') == 'preservation-failed'}
             for project in config['projects']:
                 try:
+                    if preservation_error or project.get('task_id') in failed_tasks:
+                        raise cp.Fault('Preservation could not be evaluated; no work dispatched')
                     root = Path(project['root'])
-                    binding, store = cp.config(root)
-                    if binding['task_id'] != project['task_id'] or binding['project_id'] != project['project_id']:
-                        raise cp.Fault('Registered project binding changed; no work dispatched')
+                    binding, store = monitor._binding(root, project)
                     if (store / 'automatic-stop.json').exists():
                         status['scheduled'].append({'task_id': binding['task_id'], 'result': 'automatic-stop-persists'})
                         continue
@@ -175,7 +191,11 @@ def tick(state):
                     continue
                 try:
                     import transfer
-                    result = transfer.publish(Path(project['root']), project['private_transfer']['repository'])
+                    if dependency_errors:
+                        raise cp.Fault('Transfer dependency unavailable')
+                    root = Path(project['root'])
+                    monitor._binding(root, project)
+                    result = transfer.publish(root, project['private_transfer']['repository'])
                     status['transfers'].append({'task_id': project['task_id'], **result})
                 except Exception as exc:
                     status['transfers'].append({'task_id': project['task_id'], 'status': 'pending-retry', 'error_type': type(exc).__name__})
@@ -185,7 +205,11 @@ def tick(state):
                     continue
                 try:
                     import transfer
-                    result = transfer.receive_latest(Path(project['root']), project['private_receive']['repository'])
+                    if dependency_errors:
+                        raise cp.Fault('Transfer dependency unavailable')
+                    root = Path(project['root'])
+                    monitor._binding(root, project)
+                    result = transfer.receive_latest(root, project['private_receive']['repository'])
                     status['receives'].append({'task_id': project['task_id'], **result})
                 except Exception as exc:
                     status['receives'].append({'task_id': project['task_id'], 'status': 'pending-source-sync-or-review', 'error_type': type(exc).__name__})

@@ -1,4 +1,4 @@
-# Task checkpoint 0.6.1
+# Task checkpoint 0.7.0
 
 Preserve unfinished work before account allowance runs low. Verify the saved work in a new context, account or device, then continue only after an explicit resume instruction. Install this directory per-user to make the workflow available in local Codex chats. Background collection and notifications require separate opt-in configuration. Installing the skill never switches accounts.
 
@@ -21,6 +21,26 @@ Set the following command variables to reviewed absolute paths (examples use pla
 skill_dir="$HOME/.agents/skills/task-checkpoint"
 project_dir="/absolute/path/to/project"
 ```
+
+## Automatic enrollment and chat scope
+
+Automatic enrollment is a separate opt-in in the existing account registry.
+Use `scripts/enrollment.py --state ACCOUNT-STATE configure --enabled true`, with
+repeated `--exclude-root PATH` and `--exclude-session CHAT-ID` options as needed.
+Delivered `SessionStart`/`PreToolUse` hooks enroll eligible committed Git roots
+only when a stable host thread identity is available. An unborn Git repository or busy collector defers enrollment without a task
+pause. Eligible roots receive an ignored `.checkpoint` binding and collector registration; they do not schedule execution,
+acquire ownership, invent semantic input or install another service.
+
+Existing task bindings remain unchanged. A reviewed `bind-chat` mapping records owning and explicitly unrelated chats.
+Only recorded unrelated chats avoid inheriting an existing task stop. Native hook
+`session_id` identifies the current root chat, including subagent hooks; explicit
+event `thread_id` is accepted when no session ID is supplied. Conflicting host
+fields fail closed, and inherited `CODEX_THREAD_ID` is ignored. Unknown IDs and
+legacy mappings retain conservative behavior. A recorded
+unrelated chat needs a separate checkout for its own checkpoint; a new same-task
+continuation cannot bypass its existing stop. Exclusions affect new enrollment, not existing stops.
+[Exact setup and repair procedure](references/enrollment.md).
 
 ## Bind and save
 
@@ -51,7 +71,7 @@ Existing unrelated handoff text survives. Managed sections carry identity/digest
 
 ## Automatic threshold and readiness
 
-Reuse an existing configured quota collector; this release adds no second watcher. Default reserve is <=20% remaining in any applicable window; preserve existing thresholds. Ordinary work stops at the reserve. Account quota, context and API spending remain separate; unknown readings never imply recovery.
+Reuse an existing configured quota collector; this release adds no second watcher. Default reserve is <=20% remaining in any applicable window; preserve existing thresholds unless the user explicitly chooses a task-local percentage. Ordinary work stops at the reserve. Account quota, context and API spending remain separate; unknown readings never imply recovery.
 
 Opt in `readiness: {"enabled": true, "notifier": "macos"}` only on the intended existing registered project record after reviewing [readiness setup](references/readiness.md). Preserve all other settings. Verify the actual service, host access, fresh readings and hook delivery using [account setup](references/account.md) and [automatic preservation](references/automation.md) before claiming automatic support. The already-installed collector must execute this candidate version after an authorized upgrade; an old service may point at a different runtime. Do not install or redirect it merely to demonstrate this build.
 
@@ -59,13 +79,42 @@ A ticket in the existing store targets the latest blocking reset plus 60 seconds
 
 Notifications never implement task steps, clear stops, acquire continuation authority or switch accounts. Set lifecycle `completed`, `canceled` or `transferred` when that action is verified, so obsolete tickets retire. Automatic failed saves stop after three attempts; repair the cause before explicitly resetting that bounded retry sequence. See readiness procedure.
 
-## Explicitly continue past the reserve
+## Choose a task-local reserve
 
-The default still saves/stops at 20%. After that verified stop, say `Continue to 10%` to request a task-local 10% reserve, or separately say `Continue until allowance is exhausted` to waive the numeric reserve for this task. The agent records the exact user choice and fresh account/window/reset observations, grants a pending override, then performs the usual fresh reviewed resume. No second approval is needed when the user has already explicitly chosen the mode.
+The default is 20% remaining. Before work, the user may choose any finite
+remaining percentage from 0 through 100, including fractions. Offer a choice
+when it would help; do not require users to know the commands. Execute a clear
+current choice without asking for the same permission again.
 
-At 10%, the `ten` mode saves/stops again; choosing exhaustion remains a separate explicit choice. Exhaustion mode preserves milestones and respects actual provider refusal, other resource stops, ownership, uncertain jobs and permissions. A displayed 0% can be rounded; this mode follows actual usage acceptance rather than inventing more quota. Hard exhaustion can prevent a final save.
+`reserve.py ... configure --percent N --owner OWNER --reason REASON --source SOURCE`
+sets the initial task baseline using its exact verified owner lease. It rejects
+existing automatic stops, uncertain jobs/workers and pending or active grants.
+The shared collector reserve and existing resume authority remain unchanged.
 
-[Exact CLI, expiry, revocation and maintenance commands](references/reserve.md). The shared default remains unchanged, other tasks inherit no override, and private grants are not transferred to another device. While stopped, quota reads and exact maintenance commands remain available without disabling hooks.
+After a verified stop, use a pending `--mode percent --percent N` grant followed
+by the usual fresh review and explicit resume. `ten` remains shorthand for 10%.
+Numeric 0% stops at measured zero; only separately explicit `exhaustion` waives
+the numeric reserve. Actual provider refusal, other resources, unknown readings,
+ownership and uncertain jobs always remain enforced. Hard exhaustion can prevent
+a final save, so maintain semantic milestones.
+
+[Exact CLI, expiry, revocation and maintenance commands](references/reserve.md).
+Initial policies and grants stay out of portable bundles. After a normal owner
+release, explicit `retire-policy` archives the prior policy under verified vacant
+ownership before fresh reviewed resume. It cannot clear stops or uncertain work.
+While stopped, quota
+reads, named instructions, help and exact maintenance commands remain available.
+Native `Bash` and `exec_command` names use the same strict argument checks;
+ordinary work and chained shell commands remain blocked for the stopped task.
+
+## Inspection and collector behavior
+
+Untracked nested repositories appear as unsaved artifact boundaries in inspection.
+Checkpoint creation refuses to represent them as preserved files; preserve them
+separately or explicitly exclude them. Collector quota refresh survives optional
+transfer dependency failures and reports project preservation errors separately.
+Affected dispatch remains blocked. Python 3.9 is supported; see the versioned
+validation report for actual interpreter and native-host evidence.
 
 ## Resume and transfer
 
@@ -90,7 +139,3 @@ python3 install.py --skills-dir "$HOME/.agents/skills" --uninstall
 This removes only the unchanged managed skill and retains checkpoints. If automatic activation was separately authorized, first remove the unchanged managed native service with `scripts/monitor.py --state ACCOUNT-STATE uninstall-service`, then remove owned account hooks with `scripts/account.py --state ACCOUNT-STATE uninstall --codex-home CODEX-DIRECTORY`. Preserve unrelated hooks and trust records. Do not run these commands on an unrelated installation merely to remove this staged folder. A staged folder may simply be retained or deleted after review.
 
 MIT license and [source attribution](ATTRIBUTION.md) are included. Validation distinguishes static, deterministic, fresh-model and native evidence; prior release claims are historical.
-
-## Native maintenance repair (0.6.1)
-
-A clear current instruction to continue to 10%, or bypass both reserves and continue until exhausted, is sufficient task-local authorization. The agent performs grant, fresh review and explicit resume without asking again. Start stopped recovery with `maintenance.py --root PROJECT status`, using literal absolute paths. It identifies the task and owner before any mutation. See the skill reserve reference for complete commands. Help and named installed instruction reads remain available while ordinary tools stay blocked. Grants now pin the canonical workspace, intended owner, exact lease and reviewed resume receipt in addition to task, checkpoint and account windows. Missing or stale required account readings block native tools and wrappers. Version 0.6.0 grants without these bindings require a fresh grant.

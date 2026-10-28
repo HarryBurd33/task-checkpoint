@@ -71,21 +71,26 @@ def _source(root, store, marker):
 
 
 def _preserve(root, store, binding, marker, signals, assessment):
+    # Count failed source/repository inspection as preservation attempts too.
+    # Otherwise a broken input or nested repository retries forever each tick.
+    attempts = marker.get('preservation_attempts', 0)
+    if attempts >= 3:
+        raise cp.Fault('Preservation retry limit reached; retain prior generation, repair the cause, and explicitly reset retries')
+    was_verified = marker.get('checkpoint_status') == 'verified'
+    marker.update(checkpoint_status='pending', attempted_at=cp.now(), preservation_attempts=attempts + 1)
+    cp.atomic(store / 'automatic-stop.json', cp.encoded(marker))
     task, source = _source(root, store, marker)
     fingerprint = cp.repo(root)['fingerprint']
     journal = store / 'router.json'
     active = cp.read(journal).get('active') if journal.exists() else None
     worker = {key: active.get(key) for key in ('id', 'pid', 'status')} if active else None
     digest = cp.sha(cp.encoded({'task': task, 'worker': worker}))
-    if marker.get('checkpoint_status') == 'verified' and marker.get('source_digest') == digest and marker.get('repository_fingerprint') == fingerprint:
+    if was_verified and marker.get('source_digest') == digest and marker.get('repository_fingerprint') == fingerprint:
         saved, _ = cp.latest(store)
         if saved['id'] == marker.get('checkpoint_id'):
+            marker.update(checkpoint_status='verified', preservation_attempts=0)
+            cp.atomic(store / 'automatic-stop.json', cp.encoded(marker))
             return {'task_id': binding['task_id'], 'status': 'already-preserved', 'checkpoint_id': saved['id']}
-    attempts = marker.get('preservation_attempts', 0)
-    if attempts >= 3:
-        raise cp.Fault('Preservation retry limit reached; retain prior generation, repair the cause, and explicitly reset retries')
-    marker.update(checkpoint_status='pending', attempted_at=cp.now(), preservation_attempts=attempts + 1)
-    cp.atomic(store / 'automatic-stop.json', cp.encoded(marker))
     task['observations'].append('Automatic usage checkpoint: fresh observed resource threshold reached; stop ordinary work. No job cancellation, model switch, release or automatic resume was performed.')
     task['observations'].append('Automatic source provenance: ' + json.dumps(source, sort_keys=True) + '. This captures the last maintained semantic state; later conversation details may be absent.')
     if active:

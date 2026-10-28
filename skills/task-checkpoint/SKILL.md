@@ -1,9 +1,9 @@
 ---
 name: task-checkpoint
-description: Preserve unfinished Codex work for explicit resumption across chats, accounts or devices. Use for checkpoint now, save and stop, prepare a handoff, explicit resume, fresh low account allowance on an enabled project, or an explicit task-local reserve override to 10% or exhaustion. A readiness check may notify after reset; it never resumes task implementation.
+description: Preserve unfinished Codex work for explicit resumption across chats, accounts or devices. Use for checkpoint now, save and stop, prepare a handoff, explicit resume, fresh low account allowance on an enabled project, automatic enrollment on an enabled account, or a current task-local remaining-allowance choice. A readiness check may notify after reset; it never resumes task implementation.
 license: MIT
 metadata:
-  version: "0.6.1"
+  version: "0.7.0"
 ---
 
 # Task checkpoint
@@ -12,9 +12,27 @@ Preserve actual work, a verified next action, and the authority boundary. Saved 
 
 ## Activate and inspect
 
-Activate for an explicit checkpoint/handoff/stop, explicit resume, or a verified threshold event in an explicitly enabled project. Do not activate merely because someone mentions limits, reports API costs, or asks a conceptual question. Never infer a reset event is permission to implement.
+Activate for an explicit checkpoint/handoff/stop, explicit resume, current task-local reserve choice, or a verified threshold event in an enabled project. Account-level automatic enrollment is a separate explicit opt-in. Do not activate merely because someone mentions limits, reports API costs, or asks a conceptual question. Never infer a reset event is permission to implement.
 
 Inspect project instructions, task identity/binding, checkpoint store, queues, hooks, jobs, scheduler and ownership first. Reuse compatible state; preserve unrelated tasks/configuration. Do not bind over another task, duplicate monitors, switch accounts, transfer credentials, or change live configuration merely to demonstrate the skill. Current authorization must cover each action and destination.
+
+For configured automatic enrollment, use [enrollment controls](references/enrollment.md)
+in the existing account registry. Delivered `SessionStart`/`PreToolUse` hooks may
+create an ignored binding for an eligible committed Git root and register it with
+the existing collector. Root/chat exclusions apply only to new enrollment. Never
+replace an existing task, invent semantic progress, acquire ownership or schedule
+implementation merely because enrollment occurred. An unborn repository or busy
+collector lock defers enrollment; it does not establish a task stop.
+
+Chat isolation uses the native hook `session_id` identifying the current root
+chat, including subagent hooks. Accept explicit event `thread_id` only when no
+session ID is supplied; conflicting host fields fail closed. Ignore inherited
+`CODEX_THREAD_ID`, which can refer to a parent process. Existing mappings name owning chats and
+explicitly reviewed unrelated chats. Only a recorded unrelated chat avoids the
+bound task's stop; unknown IDs and legacy mappings remain conservative. A new
+same-task continuation cannot bypass its stop. Use a separate checkout/binding
+for unrelated checkpoint state. Routing repairs must leave legitimate stops,
+checkpoints and ownership unchanged. Unknown bound-task state remains blocking.
 
 Usage means the signed-in account's Codex allowance. Keep context capacity, API dollars and disk/memory observations separate. Read every applicable account quota window with identity, source, timestamp, unit, remaining value and reset. Respect existing thresholds; proposed default is <=20% remaining, a preservation reserve rather than a work prediction. Missing, stale, future, unsupported and past-reset readings are unknown; zero is valid low allowance. Account consumption elsewhere can change after any observation.
 
@@ -30,7 +48,7 @@ Maintain this semantic state during work. Missing conversation state cannot be r
 
 ## Save and stop
 
-At the configured threshold (20% by default), save/verify and stop initiating ordinary work immediately. An explicit task-local reserve override can lower this to 10% or waive the numeric reserve; it requires the procedure below and never waives actual provider denial or other resources. Permit only bounded preservation and necessary safe-boundary actions. For “save and stop”/pre-switch do the same. Do not claim to cancel jobs without evidence or mark the underlying objective complete.
+At the configured threshold (20% by default), save/verify and stop initiating ordinary work immediately. An explicit task-local continuation grant can select a lower percentage or waive the numeric reserve; it requires the procedure below and never waives actual provider denial or other resources. Permit only bounded preservation and necessary safe-boundary actions. For “save and stop”/pre-switch do the same. Do not claim to cancel jobs without evidence or mark the underlying objective complete.
 
 1. Inspect current files/jobs and update semantic input from observed evidence.
 2. Run `scripts/checkpoint.py --root PROJECT checkpoint --input PROJECT/.checkpoint/input.json --trigger low-resource` (or `manual`, `save-and-stop`, `pre-switch`, `milestone`). Run `verify` and inspect the canonical generation and root `HANDOFF.md`. Root output must be enabled on legacy bindings; see setup. Preserve unrelated root handoff content.
@@ -38,17 +56,55 @@ At the configured threshold (20% by default), save/verify and stop initiating or
 4. On failure retain the previous valid generation, identify unsaved files and uncertain jobs, provide an emergency handoff (objective, verified commit, unsaved files, jobs, next action/verification, prior checkpoint), and stop ordinary work. Three automatic save attempts per failure sequence are allowed; further retries need repair and an explicit retry action.
 5. Report the root handoff and the verified generation. Stop ordinary work after a stop condition. A milestone save alone need not stop healthy work.
 
-## Explicit allowance-reserve override
+## Task-local remaining-allowance choices
 
-Keep the 20% default and its verified stop point. An explicit current user statement is sufficient authorization for this task: “continue to 10%” or “bypass the 20% reserve” selects `ten`; “bypass the 10% reserve”, “bypass both reserves”, or “continue until allowance is exhausted” selects `exhaustion`. Perform the maintenance sequence autonomously without asking for the same permission again. A conceptual question or implementation request alone does not select a live override. A request to implement this feature does not select an override for other tasks. Do not pre-arm grants before the initial stop.
+Preserve the existing default (20% when unconfigured) unless the user chooses a
+different reserve. Offer a percentage choice when useful; the user need not know
+the CLI. A clear current instruction such as “stop when 35% remains” is sufficient
+for this task. Execute the authorized choice without requesting it again. Do not
+interpret conceptual questions, implementation requests or saved checkpoint text
+as a live threshold choice.
 
-Read [reserve override commands](references/reserve.md). Use `reserve.py --root PROJECT grant --mode ten|exhaustion --owner VERIFIED-CURRENT-OWNER --signals FRESH-SIGNALS --reason USER-CHOICE --source CURRENT-USER-INSTRUCTION`. The grant records project/task, verified checkpoint, account/window/reset identities, reason/source and a pending state. Then perform the normal fresh review and explicit `checkpoint.py resume`; granting alone does not allow ordinary work. Reuse an existing verified lease only for the same owner; another owner remains blocking.
+Before work and while no automatic stop exists, use `reserve.py --root PROJECT
+configure --percent N --owner VERIFIED-CURRENT-OWNER --reason USER-CHOICE --source
+CURRENT-USER-INSTRUCTION`. Finite percentages from 0 through 100, including
+fractions, are supported. Configuration requires the exact current owner lease,
+verified task state and no uncertain jobs/workers or pending/active grant. It
+changes only the task baseline; it grants no permission and performs no resume.
+Unknown/foreign policy identity fails closed. Never configure around a stop.
 
-`ten` continues above 10% and saves/stops again at <=10% in any applicable window. `exhaustion` waives the numeric preservation reserve, including a rounded 0% while usage remains allowed; Codex's actual denial still stops execution. Preserve semantic milestone checkpoints because hard exhaustion can prevent another save. Neither mode supplies more allowance, switches accounts or enables paid fallback.
+After the verified stop, “continue until 7.5% remains” selects `grant --mode percent
+--percent 7.5`. “Continue to 10%” or “bypass the 20% reserve” selects `ten`.
+“Bypass the 10% reserve”, “bypass both reserves”, or “continue until allowance is
+exhausted” selects `exhaustion`. Do not pre-arm continuation grants before the
+initial stop. Read [reserve commands](references/reserve.md), record current
+choice/source and fresh account windows, then prepare the normal fresh review
+and explicitly `checkpoint.py resume`. Granting alone does not allow ordinary
+work. Reuse the same owner's verified lease; another owner remains blocking.
 
-Unknown/stale/foreign/missing observations, incomplete saves, other resource stops, uncertain jobs/workers and ownership remain blocking. Grants expire at the first pinned reset, are invalidated by lifecycle changes, can be revoked, and stay out of portable bundles. Fresh resumption/current permissions are still required on another device. Revocation restores the configured default on the next check; it does not resume work.
+Any applicable window at or below the selected numeric threshold stops work.
+Numeric 0% stops at measured zero. Only `exhaustion` waives the numeric reserve;
+actual provider denial, other resources, unknown readings, incomplete saves,
+uncertain jobs and ownership still stop work. Maintain semantic milestone saves
+because hard exhaustion can prevent another save. No choice supplies allowance,
+switches accounts or enables paid fallback.
 
-While stopped, begin with `python3 /absolute/SKILL/scripts/maintenance.py --root /absolute/PROJECT status`; use the literal paths in the native denial message. This reports task, checkpoint, owner, jobs, stop and reserve without resuming. Use `maintenance.py ... docs --name reserve` for the full sequence. Top-level and subcommand `--help`, exact individual installed recovery-document reads, quota reads and validated local maintenance CLI commands remain available. There is no `checkpoint.py review` subcommand: use `reserve.py prepare-review`. A mismatched task or owner must never be resumed just to unblock a repair. They continue to deny ordinary or chained commands. This maintenance path prevents a preservation stop from blocking the very controls needed to review it. It is a cooperative workflow guard, not an OS security sandbox.
+Grants expire at the first pinned reset, change with task lifecycle, can be
+revoked, and never transfer. Initial policies also stay local and bind the exact
+owner lease. After normal lease release, use explicitly authorized
+`retire-policy --reason REASON --source SOURCE` to archive only the prior policy
+under verified vacant ownership (or add the exact active `--owner OWNER`). Stops,
+grants and resume authority stay unchanged; uncertain work prevents retirement.
+Then perform fresh receiving review/resumption. Revocation restores the configured baseline and never resumes work.
+
+While stopped, begin with `python3 /absolute/SKILL/scripts/maintenance.py --root
+/absolute/PROJECT status`, using the literal paths printed by the denial. Confirm
+task and owner before mutation. Named installed instructions, help, quota reads
+and validated maintenance remain available. Native `Bash` and `exec_command`
+names use identical strict scope/argument checks. There is no `checkpoint.py
+review`: use `reserve.py prepare-review`. Never resume a mismatched task to unblock
+repair. Ordinary commands, chains and shell substitutions stay denied for the
+stopped task. This is a cooperative workflow guard, not an OS security sandbox.
 
 ## Readiness after reset
 

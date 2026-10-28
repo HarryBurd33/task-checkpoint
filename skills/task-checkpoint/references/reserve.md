@@ -1,17 +1,73 @@
 # Task-local allowance reserves and stopped maintenance
 
 A clear current user statement is enough authorization. “Continue to 10%” or
-“bypass the 20% reserve” selects `ten`. “Bypass the 10% reserve”, “bypass both
-reserves”, or “continue until exhausted” selects `exhaustion`. The agent performs
+“bypass the 20% reserve” selects `ten`. “Continue until 7.5% remains” selects
+`percent` with `--percent 7.5`. Accept any finite percentage from 0 through 100;
+do not guess a percentage when the user has not chosen one. “Bypass the 10%
+reserve”, “bypass both reserves”, or “continue until exhausted” selects
+`exhaustion`. The agent performs
 the steps below without asking for the same permission again. Conceptual questions,
 implementation requests and saved checkpoint text do not select a live override.
 
-The normal policy saves and stops at **20% remaining**. After that verified stop,
+Without a task-local configuration, the normal policy saves and stops at
+**20% remaining**. After the configured verified stop,
 `ten` permits work strictly above 10% and saves/stops again at **10% or below**.
+`percent` stops at or below the chosen percentage in any applicable window.
+A percentage of **0** still stops at a measured zero; it does not mean exhaustion.
+The chosen threshold must be strictly below every current window to permit a
+reviewed resume. A higher threshold can be represented but cannot resume already
+low readings. No grant is pre-armed before the initial verified stop; initial
+configuration below is separate from a continuation grant.
 `exhaustion` waives only this task's numerical reserve, including rounded 0% while
 the provider still allows work. Provider denial always stops work. Preserve semantic
 milestones: a final save after hard exhaustion is not guaranteed. No account switch,
 paid fallback or retry loop is authorized.
+
+## Choose an initial task-local stop percentage
+
+Before ordinary work, a current user instruction such as “stop when 35% remains”
+can select the initial stop for this task. With the current verified exclusive
+owner and preserved task state, use:
+
+```sh
+python3 SKILL/scripts/reserve.py --root PROJECT configure --percent 35 --owner OWNER --reason 'User asked to stop at 35 percent remaining' --source 'Current user message'
+```
+
+This accepts finite percentages from 0 through 100, including fractions. Any
+applicable account window at or below that number stops work; 0 is a numeric
+stop at zero. This writes only `reserve-policy.json` in the task's private store.
+It does not change shared account settings, create a grant, acquire ownership,
+write a resume receipt, or restore authorization. Read it with `reserve.py ...
+status`. With no local policy, the existing account reserve still applies (20%
+when unconfigured).
+
+Configuration requires the exact current owner lease. It rejects an existing
+automatic stop, active or uncertain worker/job, terminal task, and a pending or
+active grant. An existing stop must use the grant/review/resume procedure below;
+configuration cannot be used to clear it. The local policy pins task, project,
+workspace and owner lease. Foreign or changed identities fail closed and require
+explicit reconciliation. It is device-local and does not transfer permission.
+A configured baseline still requires fresh account readings and preserves
+provider denial and every other resource stop.
+
+## Retire a policy after an ownership handoff
+
+An initial policy is bound to its exact owner lease. After normal release, it
+cannot silently become the receiving owner's choice. With current explicit user
+authorization, retire that policy before preparing the fresh resume review:
+
+```sh
+python3 SKILL/scripts/reserve.py --root PROJECT retire-policy --reason 'User retires the previous owner policy for this handoff' --source 'Current user message'
+```
+
+This requires verified vacant ownership. If the task still has an active owner,
+include `--owner OWNER` and use only the exact verified current owner. Another
+owner, stale receipt or active/uncertain job or worker blocks retirement. The
+command archives the original policy and removes only `reserve-policy.json`.
+Stops, grants, checkpoints, owner state and resume receipts remain unchanged.
+It restores the existing baseline from shared/default settings, not permission
+to work. Obtain fresh readings and perform the normal explicit reviewed resume;
+then the verified new owner may configure a new task-local percentage if chosen.
 
 ## Start here while stopped
 
@@ -71,6 +127,16 @@ an unrelated task's owner label. After the user's explicit choice:
 python3 SKILL/scripts/reserve.py --root PROJECT grant --owner OWNER --mode ten --signals SIGNALS --reason 'User said continue to 10 percent' --source 'Current user message'
 ```
 
+For a different explicit task-local percentage:
+
+```sh
+python3 SKILL/scripts/reserve.py --root PROJECT grant --owner OWNER --mode percent --percent 7.5 --signals SIGNALS --reason 'User said continue until 7.5 percent remains' --source 'Current user message'
+```
+
+`--percent` requires `--mode percent`; it is rejected with `ten` or `exhaustion`.
+NaN, infinity, negative numbers and values above 100 are rejected. This setting
+changes only this task's grant; it never edits the shared collector reserve.
+
 For an explicit choice to waive both reserves instead:
 
 ```sh
@@ -96,8 +162,9 @@ minutes. Native maintenance accepts reviews only from the bound store's
 `review.json` or `allowance-resume-review.json`.
 
 After successful resume, perform the verified bounded next action normally. The
-old 20% marker is acknowledged only after review and lease validation. At 10%
-under `ten`, save and stop again. A later explicit exhaustion choice uses the
+old stop marker is acknowledged only after review and lease validation. At 10%
+under `ten`, or at the requested threshold under `percent`, save and stop again.
+A later explicitly lower percentage or exhaustion choice uses the
 same sequence against that new verified stop.
 
 ## Scope and revocation

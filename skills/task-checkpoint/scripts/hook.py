@@ -37,6 +37,29 @@ def main(account_state=None):
     binding = root / '.checkpoint' / 'config.json'
     name = event.get('hook_event_name', '')
     account_enabled = account_state is not None and (account_state / 'config.json').exists() and cp.read(account_state / 'config.json').get('enabled') is True
+    import enrollment
+    chat, identity_source = enrollment.host_identity(event)
+    account_config = cp.read(account_state / 'config.json') if account_enabled else {}
+    enrolled = None
+    if not binding.exists() and account_enabled and chat and name in ('SessionStart', 'PreToolUse'):
+        enrolled = enrollment.enroll(account_state, root, chat)
+        account_config = cp.read(account_state / 'config.json')
+    if binding.exists():
+        current, _ = cp.config(root)
+        selected_scope = enrollment.scope(account_config, root, current, chat)
+        if account_enabled and chat:
+            cp.atomic(account_state / 'chat-delivery' / (cp.sha(chat.encode()) + '.json'), cp.encoded({
+                'event': name, 'observed_at': cp.now(), 'root': str(root), 'task_id': current['task_id'],
+                'chat_id': chat, 'identity_source': identity_source, 'session_id': event.get('session_id'),
+                'scope': selected_scope, 'tool_name': event.get('tool_name')}))
+        if selected_scope == 'foreign':
+            # The stopped task and all of its state remain intact. This chat may
+            # work independently, but cannot inherit its checkpoint or ownership.
+            if name == 'SessionStart':
+                return {'hookSpecificOutput': {'hookEventName': name, 'additionalContext':
+                    'This workspace checkpoint belongs to another chat/task (' + current['task_id'] +
+                    '). Its ownership and stops are unchanged. Use a separate checkout for this chat checkpoint; never resume or replace that binding to unblock unrelated work.'}}
+            return {}
     if not binding.exists():
         if account_enabled and name == 'SessionStart':
             return {'hookSpecificOutput': {'hookEventName': name, 'additionalContext': 'Checkpoint and Handoff is enabled for this local Codex user. Use task-checkpoint for meaningful work boundaries and usage-aware assignment. This repository has no task binding yet: inspect its policies and existing queues before initializing one. No work or permission is restored by this message.'}}
@@ -46,7 +69,7 @@ def main(account_state=None):
     if account_enabled:
         cp.atomic(account_state / 'hook-delivery.json', cp.encoded({'event': name, 'observed_at': cp.now(), 'task_id': c['task_id'], 'root': str(root), 'project_id': c['project_id']}))
     if account_enabled:
-        cp.atomic(store / 'native-hook-delivery.json', cp.encoded({'event': name, 'observed_at': cp.now(), 'root': str(root), 'project_id': c['project_id'], 'task_id': c['task_id'], 'session_id': event.get('session_id'), 'pid': os.getpid()}))
+        cp.atomic(store / 'native-hook-delivery.json', cp.encoded({'event': name, 'observed_at': cp.now(), 'root': str(root), 'project_id': c['project_id'], 'task_id': c['task_id'], 'session_id': event.get('session_id'), 'chat_id': chat, 'identity_source': identity_source, 'pid': os.getpid()}))
     if name in ('PreToolUse', 'PostToolUse') and maintenance(event, root, account_state):
         return {}
     stop = store / 'automatic-stop.json'
@@ -58,7 +81,7 @@ def main(account_state=None):
                     '; checkpoint: ' + str(marker.get('checkpoint_id', 'not verified')) +
                     '. Ordinary work remains blocked until current authorization, fresh readings and reviewed resume succeed.'))
     if name == 'SessionStart':
-        return {'hookSpecificOutput': {'hookEventName': name, 'additionalContext': 'Checkpoint integration is present. Read the task-checkpoint skill. Inspect and verify current authorization, artifacts, jobs and exclusive task ownership before implementation. This hook does not resume work.' + (' User-wide usage collection is configured. Use the approved router configuration for qualified bounded tasks and check fresh shared signals before dispatch.' if account_enabled else '')}}
+        return {'hookSpecificOutput': {'hookEventName': name, 'additionalContext': ('Automatic enrollment created a task binding. Maintain .checkpoint/input.json with real semantic progress before preservation. ' if enrolled and enrolled.get('status') == 'enrolled' else '') + 'Checkpoint integration is present. Read the task-checkpoint skill. Inspect and verify current authorization, artifacts, jobs and exclusive task ownership before implementation. This hook does not resume work.' + (' User-wide usage collection is configured. Use the approved router configuration for qualified bounded tasks and check fresh shared signals before dispatch.' if account_enabled else '')}}
     low = False
     signal_path = account_state / 'signals.json' if account_enabled else store / 'signals.json'
     if name in ('PreToolUse', 'PostToolUse', 'PreCompact', 'Stop'):
