@@ -4,7 +4,8 @@
     "tests": 289,
     "seconds": 146.305,
     "passed": true,
-    "python": "3.15"
+    "python": "3.15",
+    "scope": "Before the final read-only status resilience adjustment; two additional diagnostics covered in final focused suite"
   },
   "maintenance_python39": {
     "tests": 11,
@@ -20,5 +21,10 @@
   "native_post_restore_status": "requires host approval/reload and verification",
   "real_allowance_deliberately_drained": false,
   "shared_telemetry_overwritten": false,
-  "independent_review": "Astra review: reported boundary gaps corrected; final bounded review found no high-impact blocker"
+  "independent_review": "Astra review: reported boundary gaps corrected; final bounded review found no high-impact blocker",
+  "final_maintenance_python39": {
+    "tests": 13,
+    "passed": true,
+    "seconds": 7.71
+  }
 }

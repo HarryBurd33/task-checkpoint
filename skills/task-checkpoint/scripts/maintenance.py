@@ -195,13 +195,28 @@ def _account_command(args, account_state):
 def status(root, account_state=None):
     import reserve
     binding, store = cp.config(root)
-    saved, report = cp.inspect(root)
+    try:
+        saved, report = cp.inspect(root)
+    except (cp.Fault, OSError, ValueError) as exc:
+        # Diagnosis must stay available when current-worktree reconciliation
+        # fails. Read the verified generation; do not weaken inspect/resume.
+        saved, folder = cp.latest(store)
+        report = {'checkpoint_id': saved['id'], 'task_id': saved['task_id'],
+                  'next_action': saved['task']['next_action'], 'handoff': str(folder/'HANDOFF.md'),
+                  'issues': ['current-worktree-inspection-failed: ' + str(exc)],
+                  'current_fingerprint': None, 'implementation_allowed': False}
     ownership = cp.Ownership(root, binding, store)
-    current = ownership.value(ownership.tip())
+    try:
+        current = ownership.value(ownership.tip())
+    except (cp.Fault, OSError, ValueError) as exc:
+        current = {'owner': None, 'status': 'unknown', 'error': str(exc)}
     owner = {k: v for k, v in current.items() if k != 'token'}
     marker = cp.read(store / 'automatic-stop.json') if (store / 'automatic-stop.json').exists() else None
     journal = cp.read(store / 'router.json') if (store / 'router.json').exists() else {}
-    policy = reserve.status(root)
+    try:
+        policy = reserve.status(root)
+    except (cp.Fault, OSError, ValueError) as exc:
+        policy = {'status': 'invalid-or-unknown', 'error': str(exc), 'implementation_allowed': False}
     if policy.get('override'):
         policy['override'] = {k: v for k, v in policy['override'].items() if 'token' not in k}
     return {'workspace': str(root), 'binding': binding, 'checkpoint': report,

@@ -107,6 +107,24 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(state['binding']['task_id'],'reserve-fixture')
         self.assertFalse(state['implementation_allowed'])
 
+    def test_status_survives_nested_repository_inspection_failure(self):
+        nested=self.root/'unrelated-nested-repo';nested.mkdir()
+        subprocess.run(['git','init','-q',str(nested)],check=True)
+        (nested/'file.txt').write_text('another task')
+        state=maintenance.status(self.root)
+        self.assertEqual(state['binding']['task_id'],'reserve-fixture')
+        self.assertEqual(state['checkpoint']['checkpoint_id'],self.saved['id'])
+        self.assertIsNone(state['checkpoint']['current_fingerprint'])
+        self.assertIn('inspection-failed',state['checkpoint']['issues'][0])
+        self.assertFalse(state['implementation_allowed'])
+        with self.assertRaises(cp.Fault):cp.inspect(self.root)
+
+    def test_status_reports_invalid_override_without_authorizing_it(self):
+        cp.atomic(self.store/'allowance-override.json',cp.encoded({'task_id':'foreign'}))
+        state=maintenance.status(self.root)
+        self.assertEqual(state['reserve']['status'],'invalid-or-unknown')
+        self.assertFalse(state['implementation_allowed'])
+
     def test_actual_child_work_ten_second_stop_and_exhaustion_provider_denial(self):
         self.write_signals(self.signals(21));self.assertEqual(self.invoke(),{})
         self.write_signals(self.signals(20));self.assertIn('hookSpecificOutput',self.invoke())

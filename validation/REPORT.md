@@ -9,3 +9,5 @@ Hook subprocess callbacks and isolated simulated CLI flows are not native host-d
 An independent Astra review identified boundary gaps and confirmed the corrections. An unrelated live task binding, checkpoint and ownership were preserved.
 
 Reproduce with `python3 -m unittest discover -s tests -v` and `python3 scripts/check_release.py`. Pattern-based public-file checks do not certify arbitrary data secret-free.
+
+Final diagnostic smoke check: status now reports current-worktree inspection failures (including an untracked nested Git repository) and invalid overrides without hiding verified task/owner information or relaxing resume. Thirteen final focused maintenance tests passed on Python 3.9 in 7.710 seconds. The preceding 289-test full run passed before these two additional diagnostic tests; GitHub CI runs the full final suite.
