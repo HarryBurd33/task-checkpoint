@@ -1,3 +1,8 @@
+# 0.8.3
+
+- Allow bounded Windows PowerShell/WinForms startup overhead with a 30-second total deadline, retaining the eight-second notification loop and no automatic retry.
+- Record native versus total elapsed time in Windows CI. Retain the 0.8.2 tag's failed Windows timeout as evidence; no release or installation of that candidate was made.
+
 # 0.8.2
 
 - Add optional one-shot macOS, Windows and Linux notification adapters with literal content, bounded execution and separate command/OS/display evidence.

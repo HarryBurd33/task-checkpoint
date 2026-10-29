@@ -8,6 +8,7 @@
     "docs/RELEASE-0.8.0.md": "docs/RELEASE-0.8.0.md",
     "docs/RELEASE-0.8.1.md": "docs/RELEASE-0.8.1.md",
     "docs/RELEASE-0.8.2.md": "docs/RELEASE-0.8.2.md",
+    "docs/RELEASE-0.8.3.md": "docs/RELEASE-0.8.3.md",
     "install.py": "install.py",
     "public-export.json": "public-export.json",
     "release.py": "release.py",

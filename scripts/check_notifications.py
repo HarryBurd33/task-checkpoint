@@ -22,7 +22,9 @@ def main():
                 time.sleep(0.1)
             else:raise RuntimeError('Isolated notification daemon unavailable')
         try:
+            started=time.monotonic()
             result.update(notifications.notify('CI DISPLAY TEST ONLY: literal <b>& $() ;',title='Checkpoint CI'))
+            result['command_elapsed_seconds']=round(time.monotonic()-started,3)
         except notifications.Unavailable as exc:
             # Windows hosted runners may be services without an interactive shell.
             # This is explicit missing native display coverage, never a success receipt.
@@ -37,7 +39,7 @@ def main():
         if sys.platform=='win32':
             # Parse the exact script and load the API even when UI is unavailable.
             script="$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $t=$null; $e=$null; [void][Management.Automation.Language.Parser]::ParseInput([Console]::In.ReadToEnd(),[ref]$t,[ref]$e); if ($e.Count) { exit 3 }"
-            subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],input=notifications.WINDOWS_SCRIPT,text=True,check=True,timeout=15)
+            subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],input=notifications.WINDOWS_SCRIPT,text=True,check=True,timeout=30)
             result['native_script_parsed_and_api_loaded']=True
         print(json.dumps(result,indent=2))
     finally:

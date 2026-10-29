@@ -8,7 +8,7 @@ These helpers run only when requested. They create no pause latch, background mo
 python3 scripts/notifications.py --adapter auto --message "Requested checkpoint report"
 ```
 
-macOS uses existing `osascript` notification access. Linux requires existing `notify-send` (with `--print-id`), a user D-Bus session and a display; markup is escaped. Windows uses existing Windows PowerShell and WinForms `NotifyIcon` in an interactive user session. It creates a temporary tray icon and disposes it after eight seconds; no app ID, shortcut or registry entry is installed. Dependencies are never installed automatically on the user's machine.
+macOS uses existing `osascript` notification access. Linux requires existing `notify-send` (with `--print-id`), a user D-Bus session and a display; markup is escaped. Windows uses existing Windows PowerShell and WinForms `NotifyIcon` in an interactive user session. It creates a temporary tray icon and disposes it after eight seconds (30-second total process deadline includes startup); no app ID, shortcut or registry entry is installed. Dependencies are never installed automatically on the user's machine.
 
 `accepted_by_command` means the command succeeded. Linux also returns its notification server ID. Windows separately reports the `BalloonTipShown` OS event. `display_observed` remains false: command acceptance and OS events do not prove a person saw the notification. Focus, desktop policy, accessibility settings, absent shell/UI and hosted runner limitations can prevent display. Do not retry an uncertain notification automatically.
 

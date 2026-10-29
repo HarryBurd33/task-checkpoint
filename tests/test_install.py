@@ -44,7 +44,7 @@ class UpgradeTests(unittest.TestCase):
             self.assertTrue(list((skills/'.task-checkpoint-rollback').glob('0.7.6-*.zip')))
             result=subprocess.run(cmd+['--status'],check=True,capture_output=True,text=True)
             self.assertTrue(json.loads(result.stdout)['up_to_date'])
-            self.assertEqual(json.loads(result.stdout)['version'],'0.8.2')
+            self.assertEqual(json.loads(result.stdout)['version'],'0.8.3')
 
     @unittest.skipUnless(sys.platform != 'win32', 'POSIX ownership and modes')
     def test_upgrade_preserves_existing_directory_and_file_metadata(self):

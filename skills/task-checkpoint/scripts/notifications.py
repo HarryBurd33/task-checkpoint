@@ -20,6 +20,7 @@ if (-not [Environment]::UserInteractive -or [Diagnostics.Process]::GetCurrentPro
     @{accepted_by_command=$false; os_display_event=$false; reason='No interactive Windows desktop'} | ConvertTo-Json -Compress
     exit 0
 }
+$nativeClock = [Diagnostics.Stopwatch]::StartNew()
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $icon = New-Object System.Windows.Forms.NotifyIcon
@@ -34,7 +35,7 @@ try {
         [Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 50
     }
-    @{accepted_by_command=$true; os_display_event=[bool]$seen.value; reason=$null} | ConvertTo-Json -Compress
+    @{accepted_by_command=$true; os_display_event=[bool]$seen.value; reason=$null; native_elapsed_ms=$nativeClock.ElapsedMilliseconds} | ConvertTo-Json -Compress
 } finally {
     $icon.Visible = $false
     $icon.Dispose()
@@ -74,7 +75,7 @@ def notify(message, adapter='auto', title='Task checkpoint'):
         # Fixed source; user content travels through JSON stdin, never PowerShell source.
         result = subprocess.run([executable, '-NoProfile', '-NonInteractive', '-STA', '-Command', WINDOWS_SCRIPT],
                                 input=json.dumps({'title': title, 'message': message}, ensure_ascii=True),
-                                capture_output=True, text=True, timeout=15)
+                                capture_output=True, text=True, timeout=30)
         if result.returncode == 0:
             details = json.loads(result.stdout)
             if details.get('accepted_by_command') is not True:

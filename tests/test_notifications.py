@@ -29,7 +29,7 @@ class NotificationTests(unittest.TestCase):
         self.assertEqual(json.loads(run.call_args.kwargs['input'])['message'], message)
         self.assertTrue(result['os_display_event'])
         self.assertFalse(result['display_observed'])
-        self.assertLessEqual(run.call_args.kwargs['timeout'], 15)
+        self.assertLessEqual(run.call_args.kwargs['timeout'], 30)
 
     def test_macos_literal_arguments_and_no_inferred_display(self):
         message = '" & do shell script "bad"'
@@ -63,3 +63,9 @@ class NotificationTests(unittest.TestCase):
             with self.assertRaises(n.Unavailable): n.notify('message')
         with mock.patch.object(n.sys, 'platform', 'darwin'), mock.patch.object(n.subprocess, 'run', side_effect=subprocess.TimeoutExpired('osascript',15)):
             with self.assertRaises(subprocess.TimeoutExpired): n.notify('message')
+
+    def test_windows_total_deadline_is_bounded_and_timeout_never_retries(self):
+        with mock.patch.object(n.sys, 'platform', 'win32'), mock.patch.object(n.shutil, 'which', return_value='powershell.exe'), mock.patch.object(n.subprocess, 'run', side_effect=subprocess.TimeoutExpired('powershell.exe',30)) as run:
+            with self.assertRaises(subprocess.TimeoutExpired): n.notify('message')
+            run.assert_called_once()
+            self.assertEqual(run.call_args.kwargs['timeout'], 30)
