@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.4
+
+- Add opt-in exact receipt recovery for removed managed hooks. Require the existing account/profile, a complete canonical backup and a recognized installed Python; reject missing, changed, duplicated or wrong-event definitions.
+- Report configured hook counts and historical delivery separately from collector health and actual native delivery.
+- Record native delivery for unbound Git contexts before enrollment; preserve host chat identity and process provenance.
+- Keep account-maintenance inspection from creating blank task bindings. Ordinary tool enrollment and all stops/ownership checks remain in force.
+- Record a user-confirmed native notification display separately from adapter command acceptance. No OS permission or native hook trust changes are required.
+
 ## 0.7.3
 
 - Add normal recovered-quota review using fresh live collector readings, retaining prior reviews, stops and leases until explicit reviewed resume.

@@ -27,6 +27,17 @@ def recovery_message(event, root, account_state, message):
     allowed, reason = classify(event, root, account_state)
     return message + ' Maintenance classification: ' + reason + '. Exact next command: ' + next_command(root, account_state) + '. Read-only inspection never resumes a task; confirm task and owner before a grant.'
 
+def record_delivery(state, event, root, chat, identity_source, binding=None, scope="unvalidated"):
+    value = {'event': event.get('hook_event_name'), 'observed_at': cp.now(),
+             'root': str(root), 'session_id': event.get('session_id'), 'chat_id': chat,
+             'identity_source': identity_source, 'pid': os.getpid(), 'parent_pid': os.getppid(),
+             'tool_name': event.get('tool_name'), 'scope': scope,
+             'task_id': binding.get('task_id') if binding else None,
+             'project_id': binding.get('project_id') if binding else None}
+    cp.atomic(state/'hook-delivery.json', cp.encoded(value))
+    if chat:
+        cp.atomic(state/'chat-delivery'/(cp.sha(chat.encode())+'.json'), cp.encoded(value))
+
 def main(account_state=None):
     event = json.load(sys.stdin)
     root = Path(event.get('cwd', '.')).resolve()
@@ -40,6 +51,12 @@ def main(account_state=None):
     import enrollment
     chat, identity_source = enrollment.host_identity(event)
     account_config = cp.read(account_state / 'config.json') if account_enabled else {}
+    if account_enabled:
+        record_delivery(account_state, event, root, chat, identity_source)
+    # Recovery inspection is not a new domain task. Keep unbound repair contexts
+    # unbound; ordinary covered tools still follow configured enrollment below.
+    if not binding.exists() and name in ('PreToolUse', 'PostToolUse') and maintenance(event, root, account_state):
+        return {}
     enrolled = None
     if not binding.exists() and account_enabled and chat and name in ('SessionStart', 'PreToolUse'):
         enrolled = enrollment.enroll(account_state, root, chat)
@@ -67,7 +84,7 @@ def main(account_state=None):
     c, store = cp.config(root)
     source = store / 'input.json'
     if account_enabled:
-        cp.atomic(account_state / 'hook-delivery.json', cp.encoded({'event': name, 'observed_at': cp.now(), 'task_id': c['task_id'], 'root': str(root), 'project_id': c['project_id']}))
+        record_delivery(account_state, event, root, chat, identity_source, c, selected_scope)
     if account_enabled:
         cp.atomic(store / 'native-hook-delivery.json', cp.encoded({'event': name, 'observed_at': cp.now(), 'root': str(root), 'project_id': c['project_id'], 'task_id': c['task_id'], 'session_id': event.get('session_id'), 'chat_id': chat, 'identity_source': identity_source, 'pid': os.getpid()}))
     if name in ('PreToolUse', 'PostToolUse') and maintenance(event, root, account_state):

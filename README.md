@@ -1,4 +1,9 @@
-# task-checkpoint 0.7.3
+# task-checkpoint 0.7.4
+
+Version 0.7.4 adds explicit recovery of missing managed hook receipts from exact
+installed definitions, separates hook registration from collector health, and
+records delivery before task enrollment. Account maintenance leaves unbound repair
+contexts unbound. Native hook trust and OS notification permissions are unchanged.
 
 Version 0.7.3 supports normal recovery with fresh collector readings and explicit
 reviewed resume, observation-only collection without dispatch or transfer, and

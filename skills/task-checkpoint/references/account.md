@@ -51,3 +51,38 @@ observation_only: true and empty scheduled/transfers/receives results. The
 existing enabled flag still controls collection, and the existing collector
 service must be verified independently. This mode neither clears task stops nor
 resumes work; explicit reviewed task recovery remains required.
+
+## Repair removed hook definitions
+
+Collector success does not establish hook registration or delivery. `account.py
+status` reports `hook_registration`, exact managed-definition counts, whether the
+receipt exists, and the last delivery separately. A historical timestamp or a
+complete configuration never proves a fresh event in the intended desktop chat.
+
+Normal `restore-hooks --codex-home CODEX-HOME --backup BACKUP` requires its existing
+managed receipt and preserves unrelated hooks and native trust. If that receipt
+was lost, the current user may authorize explicit recovery in a repair context:
+
+```sh
+python3 SKILL/scripts/account.py --state ACCOUNT-STATE restore-hooks --codex-home CODEX-HOME --backup ACCOUNT-STATE/hooks-temporary-backup-ID.json --recover-receipt --python /absolute/installed/python3
+```
+
+The backup must contain exactly one canonical installed definition for every
+managed event, using that account/profile, script and recognized Python. Changed,
+missing, duplicated or wrong-event callbacks require manual reconciliation.
+Recovery validates the full proposed write before saving an exact managed receipt
+and restoring definitions. If the hook write fails after the receipt is saved,
+retain both files and retry normal restoration; partial progress is not success.
+The extended recovery form deliberately stays outside the stopped-task maintenance
+exception. Do not resume a different task to run it.
+
+Verify all restored definitions against existing native trust without creating
+trust records. If definitions need review, use the host's human review flow. A
+running desktop chat can retain an older configuration: verify a new native event
+with the exact current chat ID, root and timestamp. If a fresh turn does not reload
+it, save active work before a user-performed app restart. Never force-restart other
+chats, forge a callback, or count a new CLI process as desktop delivery.
+
+Unbound account-maintenance reads record delivery without enrolling a new domain
+task. Ordinary covered tools still follow the existing enrollment policy. Delivery
+receipts contain metadata, not execution permission or a new resume grant.

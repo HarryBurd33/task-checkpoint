@@ -1,6 +1,6 @@
 # Current release verification
 
-For 0.7.3, see the [release verification report](https://github.com/HarryBurd33/task-checkpoint/blob/main/docs/RELEASE-0.7.3.md). The earlier report below records its original evidence and limitations.
+For 0.7.4, see the [release verification report](https://github.com/HarryBurd33/task-checkpoint/blob/main/docs/RELEASE-0.7.4.md). The earlier report below records its original evidence and limitations.
 
 # Version 0.7.1 verification
 

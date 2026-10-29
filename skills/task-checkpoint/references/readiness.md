@@ -56,3 +56,13 @@ Uncertain jobs may be captured as uncertain for preservation, but retry never
 resumes or duplicates them. Explicit reviewed resume still requires reconciliation.
 On failure provide the compact emergency handoff specified in SKILL.md. No save
 can reconstruct semantic state that was never maintained.
+
+## Verify visible display separately
+
+An explicit native display test may invoke the same macOS adapter with a clearly
+labeled test message that claims no task recovery or resume. Record command
+acceptance and actual visual/user confirmation separately. Do not fabricate a
+healthy account reading, alter reset times, clear a ticket, grant OS permission or
+disable Focus just to obtain a notification. A user-confirmed display test verifies
+that observation, not future scheduler delivery or timing. This host's adapter was
+visibly confirmed by the user during 0.7.4 verification; no permission was changed.

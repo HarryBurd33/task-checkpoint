@@ -252,18 +252,73 @@ def uninstall(state, codex_home):
             'service': 'Boot out the launchd agent before removing its plist; native trust records are untouched'}
 
 
-def restore_hooks(state, codex_home, backup):
+def registration_status(state):
+    """Configured definitions and delivery are separate from collector health."""
+    config = cp.read(state/'config.json')
+    path = Path(config['codex_home'])/'hooks.json'
+    current = cp.read(path) if path.exists() else {'hooks': {}}
+    receipt_path = state/'hooks-receipt.json'
+    receipt = cp.read(receipt_path) if receipt_path.exists() else None
+    definitions = receipt.get('definitions', {}) if receipt else {}
+    counts = {event: current.get('hooks', {}).get(event, []).count(definition)
+              for event, definition in definitions.items()}
+    delivery = state/'hook-delivery.json'
+    return {'receipt_present': receipt is not None, 'managed_definition_counts': counts,
+            'configuration_complete': bool(definitions) and all(n == 1 for n in counts.values()),
+            'last_delivery': cp.read(delivery) if delivery.exists() else None,
+            'native_delivery_verified_by_configuration': False,
+            'next': 'Verify a fresh native event for the intended chat; old receipts and collector success do not prove current delivery'}
+
+
+def _recover_definitions(state, codex_home, original, python):
+    config = cp.read(state/'config.json')
+    if Path(config['codex_home']).resolve() != codex_home:
+        raise cp.Fault('Account state belongs to another Codex home')
+    if python is None or not python.is_absolute() or not python.is_file():
+        raise cp.Fault('Receipt recovery requires an explicit installed Python executable')
+    trusted = {Path(sys.executable).resolve(), Path('/usr/bin/python3').resolve()}
+    trusted.update(Path(p).resolve() for p in (shutil.which('python3'), shutil.which('python')) if p)
+    if python.resolve() not in trusted:
+        raise cp.Fault('Unrecognized Python interpreter; preserve and reconcile the receipt')
+    script = Path(__file__).with_name('hook.py').resolve()
+    definitions = hook_definitions(script, state, python.resolve())
+    for event, expected in definitions.items():
+        entries = original.get('hooks', {}).get(event, [])
+        if entries.count(expected) != 1:
+            raise cp.Fault('Backup lacks one exact installed definition for every managed event')
+    for event, entries in original.get('hooks', {}).items():
+        for entry in entries:
+            if any(str(script) in h.get('command', '') for h in entry.get('hooks', [])) and entry != definitions.get(event):
+                raise cp.Fault('Customized checkpoint definition in backup; preserve and reconcile')
+    return definitions
+
+
+def restore_hooks(state, codex_home, backup, recover_receipt=False, python=None):
     """Restore only exact owned definitions removed for maintenance; retain other edits."""
     state, codex_home, backup = state.resolve(), codex_home.resolve(), backup.resolve()
     if backup.parent != state or not backup.name.startswith('hooks-temporary-backup-'):
         raise cp.Fault('Explicit temporary hook backup in the existing account state is required')
     with cp.lock(state):
-        receipt = cp.read(state/'hooks-receipt.json')
         original = cp.read(backup)
+        receipt_path = state/'hooks-receipt.json'
+        recovered = not receipt_path.exists()
+        if recovered:
+            if not recover_receipt:
+                raise cp.Fault('Managed hook receipt missing; explicitly reconcile exact installed definitions before recovery')
+            receipt = {'version': '0.4.0', 'definitions': _recover_definitions(state, codex_home, original, python),
+                       'recovered_from_sha256': cp.sha(cp.content(backup)), 'recovered_at': cp.now()}
+        else:
+            receipt = cp.read(receipt_path)
         path = codex_home/'hooks.json'
         current = cp.read(path)
         if not isinstance(current.get('hooks'),dict):
             raise cp.Fault('Unsupported hook configuration; preserve and reconcile')
+        if recovered:
+            script = str(Path(__file__).with_name('hook.py').resolve())
+            for event, entries in current['hooks'].items():
+                for entry in entries:
+                    if any(script in h.get('command', '') for h in entry.get('hooks', [])) and entry != receipt['definitions'].get(event):
+                        raise cp.Fault('Customized current checkpoint hook; preserve and reconcile')
         restored = []
         for event, definition in receipt['definitions'].items():
             if definition not in original.get('hooks',{}).get(event,[]):
@@ -271,11 +326,21 @@ def restore_hooks(state, codex_home, backup):
             entries = current['hooks'].setdefault(event,[])
             if not isinstance(entries,list):
                 raise cp.Fault('Unsupported hook event; no changes written')
+            if entries.count(definition) > 1:
+                raise cp.Fault('Duplicate managed definition; preserve and reconcile before restoration')
+            if recovered and any(entry != definition and any(
+                    str(Path(__file__).with_name('hook.py').resolve()) in h.get('command', '')
+                    for h in entry.get('hooks', [])) for entry in entries):
+                raise cp.Fault('Customized current checkpoint hook; preserve and reconcile')
             if definition not in entries:
                 entries.append(definition);restored.append(event)
         before = cp.sha(cp.content(path))
+        if recovered:
+            # Validate all files first. If the following hook write fails, the exact
+            # receipt permits an ordinary retry; no false restoration is reported.
+            cp.atomic(receipt_path, cp.encoded(receipt))
         cp.atomic(path, cp.encoded(current))
-        result = {'restored':restored,'owned_definitions':len(receipt['definitions']), 'unrelated_entries_preserved':True,'native_trust_changed':False,'before_sha256':before,'after_sha256':cp.sha(cp.content(path))}
+        result = {'restored':restored,'owned_definitions':len(receipt['definitions']), 'receipt_recovered':recovered, 'unrelated_entries_preserved':True,'native_trust_changed':False,'before_sha256':before,'after_sha256':cp.sha(cp.content(path))}
         cp.atomic(state/'hooks-restoration.json',cp.encoded(result))
         return result
 
@@ -292,19 +357,24 @@ def main():
     restore_parser = sub.add_parser('restore-hooks')
     restore_parser.add_argument('--codex-home',type=Path,required=True)
     restore_parser.add_argument('--backup',type=Path,required=True)
+    restore_parser.add_argument('--recover-receipt',action='store_true')
+    restore_parser.add_argument('--python',type=Path)
     remove_parser = sub.add_parser('uninstall')
     remove_parser.add_argument('--codex-home', type=Path, required=True)
     a = p.parse_args()
     if a.command == 'install':
         result = install(a.state, a.codex_home, a.python, a.project)
     elif a.command == 'restore-hooks':
-        result = restore_hooks(a.state,a.codex_home,a.backup)
+        if a.python is not None and not a.recover_receipt:
+            raise cp.Fault('--python is only used for explicit receipt recovery')
+        result = restore_hooks(a.state,a.codex_home,a.backup,a.recover_receipt,a.python)
     elif a.command == 'tick':
         result = tick(a.state)
     elif a.command == 'uninstall':
         result = uninstall(a.state, a.codex_home)
     else:
         result = cp.read(a.state / 'status.json')
+        result['hook_registration'] = registration_status(a.state)
     print(json.dumps(result, indent=2))
 
 
