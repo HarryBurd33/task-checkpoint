@@ -3,7 +3,7 @@ name: task-checkpoint
 description: Save unfinished work and a verified Markdown handoff; continue until completion or a chosen remaining-usage threshold. Use for checkpoint, handoff, resume, or a direct threshold/exhaustion instruction. No persistent pauses or tool-blocking hooks.
 license: MIT
 metadata:
-  version: "0.8.0"
+  version: "0.8.1"
 ---
 
 # Task checkpoint

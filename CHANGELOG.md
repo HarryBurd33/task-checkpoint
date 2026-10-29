@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1
+
+- Stop entirely stale or empty project quota snapshots from hiding a fresh existing account collector. Keep current project observations, account identity, explicit collector selection and local non-quota limits intact. Select observations without rewriting project state.
+- Add eight regression tests reproducing four failures on 0.8.0. The focused suite now has 61 tests. Persistent pause enforcement remains removed.
+
 ## 0.8.0
 
 - Replace persistent pauses and grant/review recovery with direct task limits: 20% by default, 10%, a custom finite percentage, or exhaustion. A fresh low limit saves a verified handoff and ends the caller's run without latching future tool use.

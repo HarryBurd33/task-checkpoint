@@ -44,7 +44,7 @@ class UpgradeTests(unittest.TestCase):
             self.assertTrue(list((skills/'.task-checkpoint-rollback').glob('0.7.6-*.zip')))
             result=subprocess.run(cmd+['--status'],check=True,capture_output=True,text=True)
             self.assertTrue(json.loads(result.stdout)['up_to_date'])
-            self.assertEqual(json.loads(result.stdout)['version'],'0.8.0')
+            self.assertEqual(json.loads(result.stdout)['version'],'0.8.1')
 
     def test_standalone_skill_installer_and_legacy_project_hook_retirement(self):
         import hashlib

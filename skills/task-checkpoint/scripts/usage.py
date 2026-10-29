@@ -63,11 +63,25 @@ def signals_for(root, state=None):
     _, store = cp.config(root)
     if state is not None:
         path = state / 'signals.json'
-    else:
-        path = store / 'signals.json'
-        if not path.exists():
-            path = Path.home() / '.codex/checkpoint-handoff/signals.json'
-    return cp.read(path) if path.exists() else {'records': []}
+        return cp.read(path) if path.exists() else {'records': []}
+    local_path = store / 'signals.json'
+    local = telemetry.from_checkpoint_signals(cp.read(local_path)) if local_path.exists() else {'records': []}
+    local_quota = [r for r in local['records'] if r.get('kind') == 'codex_plan']
+    # Keep current project observations, including any verified low window.
+    # Old 0.7 caches must not hide an existing collector's fresh observation.
+    if any(r['status'] != 'unknown' for r in telemetry.assess({'records': local_quota})['records']):
+        return local
+    shared_path = Path.home() / '.codex/checkpoint-handoff/signals.json'
+    if not shared_path.exists():
+        return local
+    shared = telemetry.from_checkpoint_signals(cp.read(shared_path))
+    quota = [r for r in shared['records'] if r.get('kind') == 'codex_plan']
+    known = [r for r in telemetry.assess({'records': quota})['records'] if r['status'] != 'unknown']
+    local_accounts = {r['account_fingerprint'] for r in local_quota if r.get('account_fingerprint')}
+    fresh_accounts = {r['account_fingerprint'] for r in known if r.get('account_fingerprint')}
+    if not known or not local_accounts.issubset(fresh_accounts):
+        return local
+    return {'records': quota + [r for r in local['records'] if r.get('kind') != 'codex_plan']}
 
 
 def check(root, state=None, source=None, owner=None):

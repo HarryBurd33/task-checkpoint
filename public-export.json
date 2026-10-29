@@ -6,6 +6,7 @@
     "LICENSE": "LICENSE",
     "README.md": "README.md",
     "docs/RELEASE-0.8.0.md": "docs/RELEASE-0.8.0.md",
+    "docs/RELEASE-0.8.1.md": "docs/RELEASE-0.8.1.md",
     "install.py": "install.py",
     "public-export.json": "public-export.json",
     "release.py": "release.py",
@@ -31,6 +32,7 @@
     "skills/task-checkpoint/scripts/usage.py": "skills/task-checkpoint/scripts/usage.py",
     "tests/test_collector.py": "tests/test_collector.py",
     "tests/test_install.py": "tests/test_install.py",
+    "tests/test_quota_source.py": "tests/test_quota_source.py",
     "tests/test_root_handoff.py": "tests/test_root_handoff.py",
     "tests/test_runtime.py": "tests/test_runtime.py",
     "tests/test_usage.py": "tests/test_usage.py"

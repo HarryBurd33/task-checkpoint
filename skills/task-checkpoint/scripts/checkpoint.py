@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 
-VERSION = '0.8.0'
+VERSION = '0.8.1'
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 LIMIT = 16 * 1024 * 1024
 SENSITIVE = re.compile(r'(?i)(^|[./_-])(auth|credentials?|secrets?|id_rsa|id_ed25519)([./_-]|$)|(^|/)\.env($|\.)')

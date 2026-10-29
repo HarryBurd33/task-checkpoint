@@ -49,7 +49,7 @@ def probe(executable='codex', timeout=25, codex_home=None):
 
     try:
         send({'id': 0, 'method': 'initialize', 'params': {'clientInfo': {
-            'name': 'task_checkpoint', 'version': '0.8.0'}}})
+            'name': 'task_checkpoint', 'version': '0.8.1'}}})
         answer(0)
         send({'method': 'initialized', 'params': {}})
         send({'id': 1, 'method': 'account/rateLimits/read', 'params': {}})
