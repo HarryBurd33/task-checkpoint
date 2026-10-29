@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 
-VERSION = '0.7.1'
+VERSION = '0.8.0'
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 LIMIT = 16 * 1024 * 1024
 SENSITIVE = re.compile(r'(?i)(^|[./_-])(auth|credentials?|secrets?|id_rsa|id_ed25519)([./_-]|$)|(^|/)\.env($|\.)')
@@ -349,9 +349,6 @@ def check_generation(store, pointer):
             raise Fault('Checkpoint artifact hash mismatch')
     s = read(folder / 'state.json')
     validate(s, read(ASSETS / 'checkpoint.schema.json'))
-    if 'routing' in s['task']:
-        from router_policy import validate_task
-        validate_task(s['task'])
     if s['id'] != ident:
         raise Fault('Checkpoint identity mismatch')
     return s, folder
@@ -364,39 +361,36 @@ def latest(store, previous=False):
             raise Fault('No previous checkpoint')
     return check_generation(store, pointer)
 
+def mutation_owner(root, binding, store, owner=None):
+    """Quota choices do not confer permission to replace another writer."""
+    ledger = Ownership(root, binding, store)
+    current = ledger.value(ledger.tip())
+    if current.get('owner'):
+        checked = ledger.check()
+        if owner != checked['owner']:
+            raise Fault('Task is owned by another writer; use the existing owner, never steal')
+        return checked
+    if (store / 'owner.json').exists():
+        raise Fault('Stale ownership receipt; reconcile it with the existing ledger')
+    return None
+
+
 def _preservation_owner_guard(root, binding, store, expected):
-    if expected is not None:
-        current = Ownership(root, binding, store).check()
-        if any(current.get(key) != expected.get(key) for key in ('owner', 'token')):
-            raise Fault('Ownership changed during preservation; no owner may be replaced')
+    current = mutation_owner(root, binding, store, expected['owner'] if expected else None)
+    if (current or {}).get('token') != (expected or {}).get('token'):
+        raise Fault('Ownership changed during save; no owner may be replaced')
 
 
-def _snapshot_stop_guard(root, binding, store, trigger, preservation_incident, preservation_owner):
-    stop = store / 'automatic-stop.json'
-    if stop.exists() or stop.is_symlink():
-        marker = read(stop)
-        if (not preservation_incident or marker.get('incident_id') != preservation_incident
-                or marker.get('schema_version') != 1 or marker.get('task_id') != binding['task_id']
-                or marker.get('project_id') != binding['project_id']
-                or marker.get('checkpoint_status') != 'pending' or trigger != 'low-resource'):
-            raise Fault('Automatic stop pins its checkpoint. Use checkpoint --input the bound input.json --owner CURRENT-OWNER for preservation-only saving, then prepare a fresh review and explicitly resume. Direct snapshots cannot advance a paused task.')
-    elif preservation_incident is not None:
-        raise Fault('Preservation stop changed before saving; inspect current task state')
-    _preservation_owner_guard(root, binding, store, preservation_owner)
-
-
-def checkpoint(root, source, trigger='manual', failpoint=None, *, preservation_incident=None, preservation_owner=None):
+def checkpoint(root, source, trigger='manual', failpoint=None, *, owner=None):
     c, store = config(root)
+    expected_owner = mutation_owner(root, c, store, owner)
     task = redact(read(source))
     validate(task, read(ASSETS / 'task.schema.json'))
-    if 'routing' in task:
-        from router_policy import validate_task
-        validate_task(task)
     for item in task['jobs']:
         age(item['observed_at'])
     store.mkdir(parents=True, exist_ok=True)
     with lock(store):
-        _snapshot_stop_guard(root, c, store, trigger, preservation_incident, preservation_owner)
+        _preservation_owner_guard(root, c, store, expected_owner)
         previous = None
         if (store / 'latest.json').exists():
             previous = read(store / 'latest.json')
@@ -472,7 +466,7 @@ def checkpoint(root, source, trigger='manual', failpoint=None, *, preservation_i
         check_generation(store, pointer)
         if failpoint == 'before-promote':
             raise Fault('Injected interruption before pointer promotion')
-        _snapshot_stop_guard(root, c, store, trigger, preservation_incident, preservation_owner)
+        _preservation_owner_guard(root, c, store, expected_owner)
         pointer['previous'] = previous
         root_path = root / 'HANDOFF.md'
         old_root = content(root_path) if root_path.exists() else None
@@ -527,7 +521,7 @@ def inspect(root, previous=False, max_age=86400):
             issues.append('job-needs-live-verification:' + job['id'])
     return s, {'checkpoint_id': s['id'], 'task_id': s['task_id'], 'next_action': s['task']['next_action'],
                'current_fingerprint': current['fingerprint'], 'issues': issues, 'handoff': str(folder / 'HANDOFF.md'),
-               'implementation_allowed': False, 'requires': 'Fresh authorization, tools/capabilities, job evidence, explicit reconciliation, exclusive owner'}
+               'implementation_allowed': False, 'requires': 'Current instructions, tools, job outcomes and existing ownership' }
 
 class Ownership:
     """Append-only ref ledger. Ordinary pushes provide remote compare-and-swap."""
@@ -609,123 +603,69 @@ class Ownership:
 
 def resume(root, review_path, owner, capabilities):
     s, report = inspect(root)
-    review = read(review_path)
-    if review.get('checkpoint_id') != s['id'] or review.get('task_id') != s['task_id']:
-        raise Fault('Review identity mismatch')
-    if review.get('next_action') != s['task']['next_action']['description'] or review.get('verification') != s['task']['next_action']['verification']:
-        raise Fault('State the checkpoint next action and verification before implementation')
-    if review.get('current_fingerprint') != report['current_fingerprint']:
-        raise Fault('Repository changed after review')
-    auth = review.get('authorization', {})
-    if auth.get('confirmed') is not True or not auth.get('source') or not auth.get('scope'):
-        raise Fault('Fresh authorization evidence required; checkpoint cannot grant permission')
-    if not 0 <= age(review.get('observed_at')) <= 300:
-        raise Fault('Resume review is stale')
-    resolutions = review.get('resolutions', {})
-    for issue in report['issues']:
-        record = resolutions.get(issue, {})
-        if not record.get('evidence') or not 0 <= age(record.get('observed_at')) <= 300:
-            raise Fault('Unresolved resume conflict: ' + issue)
-        if issue.startswith('job-') and record.get('status') not in ('completed', 'failed', 'cancelled', 'running-observe-only'):
-            raise Fault('Unknown job outcome; do not retry external operations')
+    if review_path is not None:
+        review = read(review_path)
+        if review.get('checkpoint_id') != s['id'] or review.get('task_id') != s['task_id']:
+            raise Fault('Review identity mismatch')
+        if review.get('next_action') != s['task']['next_action']['description'] or review.get('verification') != s['task']['next_action']['verification']:
+            raise Fault('State the checkpoint next action and verification before implementation')
+        if review.get('current_fingerprint') != report['current_fingerprint']:
+            raise Fault('Repository changed after review')
+        auth = review.get('authorization', {})
+        if auth.get('confirmed') is not True or not auth.get('source') or not auth.get('scope'):
+            raise Fault('Fresh authorization evidence required; checkpoint cannot grant permission')
+        if not 0 <= age(review.get('observed_at')) <= 300:
+            raise Fault('Resume review is stale')
+        resolutions = review.get('resolutions', {})
+        for issue in report['issues']:
+            record = resolutions.get(issue, {})
+            if not record.get('evidence') or not 0 <= age(record.get('observed_at')) <= 300:
+                raise Fault('Unresolved resume conflict: ' + issue)
+            if issue.startswith('job-') and record.get('status') not in ('completed', 'failed', 'cancelled', 'running-observe-only'):
+                raise Fault('Unknown job outcome; do not retry external operations')
+    else:
+        if any(job['status'] not in ('completed', 'failed', 'cancelled') for job in s['task']['jobs']):
+            raise Fault('Verify uncertain job outcomes and update the handoff before continuing')
     for tool in s['task']['tools']:
         if not shutil.which(tool):
             raise Fault('Required tool unavailable: ' + tool)
     if set(s['task']['capabilities']) - set(capabilities):
         raise Fault('Device capability missing')
     c, store = config(root)
-    if (store / 'signals.json').exists() or (store/'allowance-override.json').exists():
-        from monitor import current_signals
-        readings = current_signals(root)
-        if policy(readings, root, allow_pending=True, require_account=requires_account(store, readings))['checkpoint_required']:
-            raise Fault('Fresh low resource signal persists; stop and recheck before explicit resume')
-    resource = review.get('resources', {})
-    if resource.get('adequate_for_bounded_action') is not True or not resource.get('evidence') or not 0 <= age(resource.get('observed_at')) <= 300:
-        raise Fault('Fresh resource assessment required for bounded action; unknown is not zero')
-    from monitor import validate_resume, resume_guard, _acknowledge_resume_locked
-    validate_resume(root, store)
-    import reserve
-    reserve.validate_review_resources(root, resource)
-    reserve.validate_resume(root)
-    # Match collector -> task-store lock order and fail before changing the
-    # lease, receipt or grant when the host sandbox cannot write its lock.
-    with resume_guard(root, store), lock(store):
-        validate_resume(root, store)
-        reserve.validate_review_resources(root, resource)
-        reserve.validate_resume(root)
+    with lock(store):
         if repo(root)['fingerprint'] != report['current_fingerprint']:
             raise Fault('Repository changed during resume')
         ownership = Ownership(root, c, store)
-        if (store/'owner.json').exists():
-            claim = ownership.check()
-            if claim['owner'] != owner:
-                raise Fault('Task already owned by another agent; never steal its lease')
+        if ownership.value(ownership.tip()).get('owner'):
+            claim = mutation_owner(root, c, store, owner)
         else:
+            mutation_owner(root, c, store, owner)
             claim = ownership.acquire(owner)
-        receipt = {'checkpoint_id': s['id'], 'task_id': s['task_id'], 'review': redact(review), 'owner': claim, 'capabilities': list(capabilities), 'resumed_at': now()}
-        atomic(store / 'resume.json', encoded(receipt))
-        reserve.activate(root)
-        _acknowledge_resume_locked(root, store)
-    return {'implementation_allowed': True, 'next_action': s['task']['next_action'], 'owner_scope': c['ownership'],
-            'warning': 'Owner check is enforced by this runtime and wrapper; unrelated editors must cooperate.'}
-
-def requires_account(store, signals):
-    from telemetry import from_checkpoint_signals
-    return (store / 'allowance-override.json').exists() or any(r.get('kind') == 'codex_plan' for r in from_checkpoint_signals(signals)['records'])
+        atomic(store / 'resume.json', encoded({'checkpoint_id': s['id'], 'task_id': c['task_id'],
+               'owner': claim, 'resumed_at': now()}))
+    return {'implementation_allowed': True, 'next_action': s['task']['next_action'],
+            'issues_to_reconcile': report['issues'], 'owner_scope': c['ownership'],
+            'authorization': 'Current user instructions and native permissions still govern each action'}
 
 
-def policy(signals, root=None, allow_pending=False, require_account=False):
-    from telemetry import assess, from_checkpoint_signals
-    normalized = from_checkpoint_signals(signals)
-    if 'records' not in signals:
-        # Named compatibility adapter for old explicit checkpoint observations.
-        # Identity is never invented, so anonymous legacy records cannot grant
-        # or satisfy a scoped allowance override.
-        for record in normalized['records']:
-            record.setdefault('source', 'legacy-checkpoint-signal-adapter')
-    if root is not None:
-        import reserve
-        assessment = reserve.assess(root, normalized, allow_pending=allow_pending, require_account=require_account)
-    else:
-        assessment = assess(normalized)
-    names = {'codex_plan':'account_quota','api_balance':'api_budget','context':'context','local_resource':'local_resource'}
-    reasons = {names[r['kind']] for r in assessment['low']}
-    if assessment.get('override_blocked'):
-        reasons.add('account_quota')
-    result = {'checkpoint_required':bool(assessment['low']) or assessment.get('override_blocked',False),
-        'signals':{names[k]:v for k,v in assessment['statuses'].items()},'reason':sorted(reasons),
-        'router_extension_version':1,'observations':assessment['records'],
-        'policy':'Configured reserve by default; explicit task-local override only after verified stop and reviewed resume. Unknown measurements are never invented.'}
-    if 'override' in assessment:
-        result['allowance_override'] = assessment['override']
+def policy(signals, root=None, **unused):
+    from usage import assess
+    result = assess(signals, root)
+    result['checkpoint_required'] = result['action'] == 'handoff'
     return result
 
 
 def run_boundary(root, source, command, capabilities):
-    import router
-    with router.exclusive(root):
-        if router.state(root).get('active') is not None:
-            raise Fault('Router work is active or uncertain; reconcile before ordinary work')
-        return _run_boundary(root, source, command, capabilities)
-
-
-def _run_boundary(root, source, command, capabilities):
     c, store = config(root)
-    if (store / 'automatic-stop.json').exists():
-        raise Fault('Automatic stop persists; explicitly resume after fresh resource recovery before running work')
-    Ownership(root, c, store).check()
-    receipt = read(store / 'resume.json')
-    s, _ = latest(store)
-    if receipt['task_id'] != c['task_id'] or receipt['checkpoint_id'] != s['id']:
-        raise Fault('Resume verification required before running work')
-    if (store / 'signals.json').exists() or (store/'allowance-override.json').exists():
-        import monitor
-        readings = monitor.current_signals(root)
-        required_account = requires_account(store, readings)
-        if policy(readings, root, require_account=required_account)['checkpoint_required']:
-            saved = monitor.stop_for_signals(root, readings, require_account=required_account)
-            return {'exit_code': 75, 'checkpoint': saved, 'child_status': 'not started; low resource signal'}
-    checkpoint(root, source, 'pre-switch')
+    claim = Ownership(root, c, store).check()
+    journal = store / 'router.json'
+    if journal.exists() and read(journal).get('active') is not None:
+        raise Fault('An old worker is active or uncertain; reconcile before running another')
+    from usage import check
+    boundary = check(root, source=source, owner=claim['owner'])
+    if boundary['action'] == 'handoff':
+        return {'exit_code': 75, 'checkpoint': boundary.get('checkpoint'), 'child_status': 'not started; usage limit reached'}
+    checkpoint(root, source, 'milestone', owner=claim['owner'])
     child = subprocess.Popen(command, cwd=str(root))
     interrupted = []
     def stop(signum, frame):
@@ -746,7 +686,7 @@ def _run_boundary(root, source, command, capabilities):
             os.close(fd)
             try:
                 atomic(Path(name), encoded(task))
-                saved = checkpoint(root, Path(name), 'shutdown')
+                saved = checkpoint(root, Path(name), 'shutdown', owner=claim['owner'])
             finally:
                 Path(name).unlink(missing_ok=True)
             return {'exit_code': 128 + interrupted[0], 'checkpoint': saved, 'child_status': 'uncertain; no cancellation claimed'}
@@ -756,7 +696,7 @@ def _run_boundary(root, source, command, capabilities):
         os.close(fd)
         try:
             atomic(Path(name), encoded(task))
-            saved = checkpoint(root, Path(name), 'milestone' if child.returncode == 0 else 'error')
+            saved = checkpoint(root, Path(name), 'milestone' if child.returncode == 0 else 'error', owner=claim['owner'])
         finally:
             Path(name).unlink(missing_ok=True)
         return {'exit_code': child.returncode, 'checkpoint': saved}
@@ -772,7 +712,7 @@ def build_parser():
     p.add_argument('--task', required=True)
     p.add_argument('--project-id', required=True)
     p.add_argument('--store', type=Path)
-    p.add_argument('--ownership', choices=['remote', 'local'], default='remote')
+    p.add_argument('--ownership', choices=['remote', 'local'], default='local')
     p = sub.add_parser('checkpoint')
     p.add_argument('--input', type=Path, required=True)
     p.add_argument('--owner')
@@ -784,10 +724,10 @@ def build_parser():
     p.add_argument('--reason', required=True)
     p.add_argument('--owner')
     p = sub.add_parser('resume')
-    p.add_argument('--review', type=Path, required=True)
+    p.add_argument('--review', type=Path)
     p.add_argument('--owner', required=True)
     p.add_argument('--capability', action='append', default=[])
-    sub.add_parser('enable-root-handoff')
+    sub.add_parser('enable-root-handoff').add_argument('--owner')
     sub.add_parser('refresh-handoff').add_argument('--owner')
     sub.add_parser('owner-check')
     sub.add_parser('release').add_argument('--owner')
@@ -804,12 +744,9 @@ def main():
     a = build_parser().parse_args()
     root = a.root.resolve()
     owner_claim = None
-    if a.cmd in ('checkpoint', 'release', 'recover-previous', 'refresh-handoff') and a.owner is not None:
+    if a.cmd in ('checkpoint', 'release', 'recover-previous', 'refresh-handoff', 'enable-root-handoff'):
         binding, store = config(root)
-        current = Ownership(root, binding, store).check()
-        owner_claim = current
-        if current['owner'] != a.owner:
-            raise Fault('Ownership denial: task is owned by another agent')
+        owner_claim = mutation_owner(root, binding, store, getattr(a, 'owner', None))
     if a.cmd == 'init':
         if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', a.task):
             raise Fault('Use lowercase task slug')
@@ -829,12 +766,7 @@ def main():
     if a.cmd == 'policy':
         out = policy(read(a.input), root if (root/'.checkpoint/config.json').exists() else None)
     elif a.cmd == 'checkpoint':
-        _, store = config(root)
-        if (store / 'automatic-stop.json').exists() or (store / 'automatic-stop.json').is_symlink():
-            from monitor import preserve_stopped
-            out = preserve_stopped(root, a.input, a.owner)
-        else:
-            out = checkpoint(root, a.input, a.trigger)
+        out = checkpoint(root, a.input, a.trigger, owner=a.owner)
     else:
         c, store = config(root)
         if a.cmd == 'verify':
@@ -872,21 +804,13 @@ def main():
         elif a.cmd == 'inspect':
             _, out = inspect(root, a.previous)
         elif a.cmd == 'recover-previous':
-            from monitor import resume_guard
-            with resume_guard(root, store), lock(store):
+            with lock(store):
                 _preservation_owner_guard(root, c, store, owner_claim)
                 current = read(store / 'latest.json')
                 previous = current.get('previous')
                 if not previous:
                     raise Fault('No previous valid checkpoint')
                 check_generation(store, previous)
-                stop = store / 'automatic-stop.json'
-                if stop.exists() or stop.is_symlink():
-                    marker = read(stop)
-                    if (not a.owner or marker.get('schema_version') != 1
-                            or marker.get('task_id') != c['task_id'] or marker.get('project_id') != c['project_id']
-                            or marker.get('checkpoint_status') != 'verified' or marker.get('checkpoint_id') != previous['id']):
-                        raise Fault('A paused task may recover only its verified pinned generation with the existing owner; no pointer changed')
                 atomic(store / ('recovery-' + uuid.uuid4().hex + '.json'), encoded({'discarded_pointer': current, 'reason': redact(a.reason), 'at': now()}))
                 atomic(store / 'latest.json', encoded(previous))
                 out = {'recovered': previous['id'], 'worktree_changed': False}
@@ -912,5 +836,5 @@ if __name__ == '__main__':
         sys.exit(main() or 0)
     except (Fault, OSError, subprocess.SubprocessError, KeyError, TypeError, ValueError) as e:
         # Do not echo source contents, raw Git stderr or credentials in failures.
-        print(json.dumps({'ok': False, 'error': redact(str(e)) if isinstance(e, Fault) else type(e).__name__, 'normal_work_must_stop': True}), file=sys.stderr)
+        print(json.dumps({'ok': False, 'error': redact(str(e)) if isinstance(e, Fault) else type(e).__name__, 'checkpoint_operation_failed': True}), file=sys.stderr)
         sys.exit(2)

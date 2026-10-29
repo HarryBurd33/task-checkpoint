@@ -4,15 +4,13 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import shlex
 import shutil
-import subprocess
 import sys
 import tempfile
 import zipfile
 
 ROOT=Path(__file__).resolve().parent
-VERSION='0.7.6'
+VERSION='0.8.0'
 
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def files(root):return {p.relative_to(root).as_posix():digest(p) for p in root.rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.name!='.install-receipt.json'}
@@ -35,24 +33,16 @@ def main():
     if a.project:
         project=a.project.resolve();hooks=project/'.codex/hooks.json';backup=project/'.codex/task-checkpoint-hooks-backup.json';marker=project/'.codex/task-checkpoint-install.json'
         if marker.exists():
-            if not hooks.exists() or digest(hooks)!=json.loads(marker.read_text())['sha256']:raise RuntimeError('Hook configuration changed; preserve and reconcile manually')
-            if a.uninstall:
-                previous=json.loads(backup.read_text());hook_operation=('restore',previous)
-        elif a.uninstall:raise RuntimeError('No managed project hook receipt; preserve unrelated hooks')
-        else:
-            if backup.exists():raise RuntimeError('Existing hook integration preserved')
-            value=json.loads(hooks.read_text()) if hooks.exists() else {'hooks':{}}
-            if not isinstance(value.get('hooks'),dict):raise RuntimeError('Unsupported existing hook configuration')
-            command=subprocess.list2cmdline([sys.executable,str(target/'scripts/hook.py')]) if sys.platform=='win32' else shlex.join([sys.executable,str(target/'scripts/hook.py')])
-            for event in ['SessionStart','PreToolUse','PostToolUse','PreCompact','Stop','Interrupt','SessionEnd']:
-                value['hooks'].setdefault(event,[]).append({'hooks':[{'type':'command','command':command,'timeout':3 if event in ('Interrupt','SessionEnd') else 15}]})
-            hook_operation=('install',value)
+            if not hooks.exists() or digest(hooks)!=json.loads(marker.read_text())['sha256']:
+                raise RuntimeError('Legacy project hook configuration changed; preserve and reconcile manually')
+            hook_operation=('restore',json.loads(backup.read_text()))
+    # 0.8 never registers tool-blocking hooks. Retire only exact managed 0.7 definitions.
+    if hook_operation:
+        previous=hook_operation[1]
+        if previous['existed']:hooks.write_text(previous['content'])
+        else:hooks.unlink()
+        marker.unlink();backup.unlink()
     if a.uninstall:
-        if hook_operation:
-            previous=hook_operation[1]
-            if previous['existed']:hooks.write_text(previous['content'])
-            else:hooks.unlink()
-            marker.unlink();backup.unlink()
         shutil.rmtree(target)
         print('Removed unchanged managed skill. Private checkpoints and ownership retained.');return
     a.skills_dir.mkdir(parents=True,exist_ok=True)
@@ -72,12 +62,7 @@ def main():
             except Exception:
                 if old.exists():old.rename(target)
                 raise
-    if hook_operation and hook_operation[0]=='install':
-        hooks.parent.mkdir(parents=True,exist_ok=True)
-        backup.write_text(json.dumps({'existed':hooks.exists(),'content':hooks.read_text() if hooks.exists() else ''},indent=2)+'\n')
-        hooks.write_text(json.dumps(hook_operation[1],indent=2)+'\n')
-        marker.write_text(json.dumps({'sha256':digest(hooks),'runtime_version':VERSION},indent=2)+'\n')
-    print('Installed task-checkpoint '+VERSION+'. Native hook trust must be reviewed separately.')
+    print('Installed task-checkpoint '+VERSION+'. No hooks or background services installed.')
 
 if __name__=='__main__':
     try:main()

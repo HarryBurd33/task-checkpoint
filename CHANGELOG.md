@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+- Replace persistent pauses and grant/review recovery with direct task limits: 20% by default, 10%, a custom finite percentage, or exhaustion. A fresh low limit saves a verified handoff and ends the caller's run without latching future tool use.
+- Remove tool-blocking hooks, automatic enrollment, router dispatch, account switching, notification and transfer execution. Existing collector entry points now only collect signed-in quota. Cached old hooks are inert.
+- Keep snapshots, previous-generation verification, root HANDOFF preservation, actual file backups, existing ownership and uncertain-job protections. Read existing snapshot schemas and archive obsolete policy files optionally.
+- Replace retired-feature tests with 53 focused tests covering the smaller runtime and migration. Document global installation, direct usage choices, cooperative monitoring and hard-exhaustion limits.
+
+Historical 0.7 entries below describe retired behavior, retained for release history.
+
 ## 0.7.6
 
 - Route an exact owner's supported checkpoint save during a persistent pause through the existing fenced preservation path. Keep the stop and latest verified generation aligned without resuming or replacing ownership.

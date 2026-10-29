@@ -95,7 +95,7 @@ class RuntimeTests(unittest.TestCase):
         self.save();review=self.review()
         self.cli('resume','--review',str(review),'--owner','first')
         self.cli('resume','--review',str(review),'--owner','second',ok=False)
-        self.cli('owner-check');self.cli('release')
+        self.cli('owner-check');self.cli('release','--owner','first')
         self.cli('resume','--review',str(review),'--owner','second')
 
     def test_resume_requires_action_authorization_job_evidence(self):
@@ -133,22 +133,11 @@ class RuntimeTests(unittest.TestCase):
             with self.assertRaises(cp.Fault,msg=bad):cp.relative(bad)
         self.assertEqual(cp.relative('results/step two.txt'),'results/step two.txt')
 
-    def test_resource_signals(self):
-        make=lambda n,u:{'remaining':n,'unit':u,'observed_at':cp.now()}
-        normal={'account_quota':[make(80,'percent_remaining')],'context':[make(20000,'tokens_remaining')]}
-        self.assertFalse(cp.policy(normal)['checkpoint_required'])
-        normal['account_quota'][0]['remaining']=10;self.assertEqual(cp.policy(normal)['reason'],['account_quota'])
-        normal['account_quota'][0]['remaining']=80;normal['context'][0]['remaining']=1000
-        self.assertEqual(cp.policy(normal)['reason'],['context'])
-        normal['context'][0]['observed_at']='2000-01-01T00:00:00+00:00'
-        self.assertFalse(cp.policy(normal)['checkpoint_required'])
-        self.assertEqual(cp.policy({})['signals']['api_budget'],'unknown')
-
     def test_boundary_error_and_success(self):
         self.save();self.cli('resume','--review',str(self.review()),'--owner','wrapper')
         r=self.cli('run','--input',str(self.source),'--',sys.executable,'-c','raise SystemExit(4)',ok=False)
         self.assertEqual(r.returncode,4);self.assertEqual(cp.latest(self.root/'.checkpoint')[0]['trigger'],'error')
-        self.cli('release');self.cli('resume','--review',str(self.review()),'--owner','wrapper')
+        self.cli('release','--owner','wrapper');self.cli('resume','--review',str(self.review()),'--owner','wrapper')
         self.cli('run','--input',str(self.source),'--',sys.executable,'-c','print("bounded success")')
         self.assertEqual(cp.latest(self.root/'.checkpoint')[0]['trigger'],'milestone')
 
@@ -159,31 +148,6 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(r.returncode,91)
         self.assertEqual(cp.latest(self.root/'.checkpoint')[0]['id'],saved['id'])
         self.assertTrue((self.root/'.checkpoint/writer.lock').exists())
-
-    def test_hook_low_signal_and_dedup(self):
-        hook=SCRIPT.with_name('hook.py')
-        self.save()
-        signals={'account_quota':[{'remaining':5,'unit':'percent_remaining','observed_at':cp.now()}]}
-        cp.atomic(self.root/'.checkpoint/signals.json',cp.encoded(signals))
-        def invoke(event):
-            r=subprocess.run([sys.executable,str(hook)],input=json.dumps({'cwd':str(self.root),'hook_event_name':event}),capture_output=True,text=True)
-            self.assertEqual(r.returncode,0,r.stderr)
-            return json.loads(r.stdout)
-        response=invoke('PreToolUse')
-        self.assertNotIn('continue',response) # Unsupported for PreToolUse in release docs.
-        self.assertEqual(response['hookSpecificOutput']['permissionDecision'],'deny')
-        first=cp.latest(self.root/'.checkpoint')[0]['id']
-        self.assertFalse(invoke('PostToolUse')['continue'])
-        self.assertEqual(cp.latest(self.root/'.checkpoint')[0]['id'],first)
-        self.cli('resume','--review',str(self.review()),'--owner','low',ok=False)
-        signals['account_quota'][0]['remaining']=90
-        cp.atomic(self.root/'.checkpoint/signals.json',cp.encoded(signals))
-        self.cli('resume','--review',str(self.review()),'--owner','recovered')
-        signals['account_quota'][0]['remaining']=1
-        cp.atomic(self.root/'.checkpoint/signals.json',cp.encoded(signals))
-        result=self.cli('run','--input',str(self.source),'--',sys.executable,'-c',"from pathlib import Path;Path('should-not-run').touch()",ok=False)
-        self.assertEqual(result.returncode,75)
-        self.assertFalse((self.root/'should-not-run').exists())
 
     def test_controlled_shutdown_preserves_uncertain_child(self):
         import signal,time
@@ -209,11 +173,12 @@ class RuntimeTests(unittest.TestCase):
     def test_remote_ownership_race(self):
         remote=Path(self.temp.name)/'remote.git'
         subprocess.check_call(['git','init','--bare',str(remote)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        binding=cp.read(self.root/'.checkpoint/config.json');binding['ownership']='remote';cp.atomic(self.root/'.checkpoint/config.json',cp.encoded(binding))
         self.g('remote','add','origin',str(remote));self.g('push','-u','origin','main')
         clone=Path(self.temp.name)/'clone'
         subprocess.check_call(['git','clone','--branch','main',str(remote),str(clone)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         for key,value in [('user.name','Checkpoint Test'),('user.email','test@example.invalid')]:subprocess.check_call(['git','config',key,value],cwd=clone)
-        self.cli('init','--task','fixture','--project-id','fixture-project',root=clone)
+        self.cli('init','--task','fixture','--project-id','fixture-project','--ownership','remote',root=clone)
         c,store=cp.config(self.root);c['ownership']='remote';cp.atomic(self.root/'.checkpoint/config.json',cp.encoded(c))
         c2,store2=cp.config(clone);first,second=cp.Ownership(self.root,c,store),cp.Ownership(clone,c2,store2)
         self.assertEqual(first.tip(),second.tip())

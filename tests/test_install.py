@@ -16,7 +16,7 @@ class InstallationTests(unittest.TestCase):
             subprocess.run(cmd,check=True,capture_output=True)
             installed=json.loads(hooks.read_text())
             self.assertEqual(installed['hooks']['SessionStart'][0]['hooks'][0]['command'],'existing-herdr-session-hook')
-            self.assertEqual(installed['hooks']['Interrupt'][0]['hooks'][0]['timeout'],3)
+            self.assertEqual(hooks.read_text(),initial)
             self.assertTrue((skills/'task-checkpoint/.install-receipt.json').exists())
             subprocess.run(cmd+['--uninstall'],check=True,capture_output=True)
             self.assertEqual(hooks.read_text(),initial)
@@ -29,4 +29,39 @@ class InstallationTests(unittest.TestCase):
             r=subprocess.run(cmd+['--uninstall'],capture_output=True)
             self.assertEqual(r.returncode,2)
             self.assertIn('customization',target.read_text())
-if __name__=='__main__':unittest.main()
+
+class UpgradeTests(unittest.TestCase):
+    def test_repair_archives_old_managed_version_and_installs_same_bytes(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as tmp:
+            skills=Path(tmp)/'skills';cmd=[sys.executable,str(INSTALL),'--skills-dir',str(skills)]
+            subprocess.run(cmd,check=True,capture_output=True)
+            target=skills/'task-checkpoint';receipt=target/'.install-receipt.json'
+            old=target/'obsolete-runtime.py';old.write_text('old runtime preserved in rollback')
+            value=json.loads(receipt.read_text());value['version']='0.7.6';value['files']['obsolete-runtime.py']=hashlib.sha256(old.read_bytes()).hexdigest();receipt.write_text(json.dumps(value))
+            subprocess.run(cmd+['--repair'],check=True,capture_output=True)
+            self.assertFalse(old.exists())
+            self.assertTrue(list((skills/'.task-checkpoint-rollback').glob('0.7.6-*.zip')))
+            result=subprocess.run(cmd+['--status'],check=True,capture_output=True,text=True)
+            self.assertTrue(json.loads(result.stdout)['up_to_date'])
+            self.assertEqual(json.loads(result.stdout)['version'],'0.8.0')
+
+    def test_standalone_skill_installer_and_legacy_project_hook_retirement(self):
+        import hashlib
+        import shutil
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);standalone=root/'standalone'
+            shutil.copytree(INSTALL.parent/'skills/task-checkpoint',standalone,ignore=shutil.ignore_patterns('__pycache__'))
+            project=root/'project';settings=project/'.codex';settings.mkdir(parents=True)
+            original='{"hooks": {"PreToolUse": [{"hooks": [{"command": "unrelated"}]}]}}\n'
+            old='{"hooks": {"PreToolUse": [{"hooks": [{"command": "old-checkpoint"}]}]}}\n'
+            hooks=settings/'hooks.json';hooks.write_text(old)
+            (settings/'task-checkpoint-hooks-backup.json').write_text(json.dumps({'existed':True,'content':original}))
+            (settings/'task-checkpoint-install.json').write_text(json.dumps({'sha256':hashlib.sha256(hooks.read_bytes()).hexdigest()}))
+            subprocess.run([sys.executable,str(standalone/'install.py'),'--skills-dir',str(root/'skills'),'--project',str(project)],check=True,capture_output=True)
+            self.assertEqual(hooks.read_text(),original)
+            self.assertFalse((settings/'task-checkpoint-install.json').exists())
+            self.assertTrue((root/'skills/task-checkpoint/SKILL.md').exists())
+
+if __name__ == '__main__':
+    unittest.main()

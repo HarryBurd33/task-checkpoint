@@ -49,17 +49,15 @@ def probe(executable='codex', timeout=25, codex_home=None):
 
     try:
         send({'id': 0, 'method': 'initialize', 'params': {'clientInfo': {
-            'name': 'checkpoint_usage_router', 'version': '0.2.0'}}})
+            'name': 'task_checkpoint', 'version': '0.8.0'}}})
         answer(0)
         send({'method': 'initialized', 'params': {}})
         send({'id': 1, 'method': 'account/rateLimits/read', 'params': {}})
         limits = answer(1)
-        send({'id': 2, 'method': 'model/list', 'params': {'limit': 100, 'includeHidden': False}})
-        models = answer(2)
         send({'id': 3, 'method': 'account/read', 'params': {}})
         account = answer(3)
         return {'observed_at': cp.now(), 'source': 'codex-app-server',
-                'rate_limits': limits, 'models': models, 'account': account}
+                'rate_limits': limits, 'account': account}
     finally:
         process.terminate()
         try:
