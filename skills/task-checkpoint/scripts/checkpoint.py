@@ -364,7 +364,28 @@ def latest(store, previous=False):
             raise Fault('No previous checkpoint')
     return check_generation(store, pointer)
 
-def checkpoint(root, source, trigger='manual', failpoint=None):
+def _preservation_owner_guard(root, binding, store, expected):
+    if expected is not None:
+        current = Ownership(root, binding, store).check()
+        if any(current.get(key) != expected.get(key) for key in ('owner', 'token')):
+            raise Fault('Ownership changed during preservation; no owner may be replaced')
+
+
+def _snapshot_stop_guard(root, binding, store, trigger, preservation_incident, preservation_owner):
+    stop = store / 'automatic-stop.json'
+    if stop.exists() or stop.is_symlink():
+        marker = read(stop)
+        if (not preservation_incident or marker.get('incident_id') != preservation_incident
+                or marker.get('schema_version') != 1 or marker.get('task_id') != binding['task_id']
+                or marker.get('project_id') != binding['project_id']
+                or marker.get('checkpoint_status') != 'pending' or trigger != 'low-resource'):
+            raise Fault('Automatic stop pins its checkpoint. Use checkpoint --input the bound input.json --owner CURRENT-OWNER for preservation-only saving, then prepare a fresh review and explicitly resume. Direct snapshots cannot advance a paused task.')
+    elif preservation_incident is not None:
+        raise Fault('Preservation stop changed before saving; inspect current task state')
+    _preservation_owner_guard(root, binding, store, preservation_owner)
+
+
+def checkpoint(root, source, trigger='manual', failpoint=None, *, preservation_incident=None, preservation_owner=None):
     c, store = config(root)
     task = redact(read(source))
     validate(task, read(ASSETS / 'task.schema.json'))
@@ -375,6 +396,7 @@ def checkpoint(root, source, trigger='manual', failpoint=None):
         age(item['observed_at'])
     store.mkdir(parents=True, exist_ok=True)
     with lock(store):
+        _snapshot_stop_guard(root, c, store, trigger, preservation_incident, preservation_owner)
         previous = None
         if (store / 'latest.json').exists():
             previous = read(store / 'latest.json')
@@ -450,6 +472,7 @@ def checkpoint(root, source, trigger='manual', failpoint=None):
         check_generation(store, pointer)
         if failpoint == 'before-promote':
             raise Fault('Injected interruption before pointer promotion')
+        _snapshot_stop_guard(root, c, store, trigger, preservation_incident, preservation_owner)
         pointer['previous'] = previous
         root_path = root / 'HANDOFF.md'
         old_root = content(root_path) if root_path.exists() else None
@@ -780,9 +803,11 @@ def build_parser():
 def main():
     a = build_parser().parse_args()
     root = a.root.resolve()
+    owner_claim = None
     if a.cmd in ('checkpoint', 'release', 'recover-previous', 'refresh-handoff') and a.owner is not None:
         binding, store = config(root)
         current = Ownership(root, binding, store).check()
+        owner_claim = current
         if current['owner'] != a.owner:
             raise Fault('Ownership denial: task is owned by another agent')
     if a.cmd == 'init':
@@ -804,7 +829,12 @@ def main():
     if a.cmd == 'policy':
         out = policy(read(a.input), root if (root/'.checkpoint/config.json').exists() else None)
     elif a.cmd == 'checkpoint':
-        out = checkpoint(root, a.input, a.trigger)
+        _, store = config(root)
+        if (store / 'automatic-stop.json').exists() or (store / 'automatic-stop.json').is_symlink():
+            from monitor import preserve_stopped
+            out = preserve_stopped(root, a.input, a.owner)
+        else:
+            out = checkpoint(root, a.input, a.trigger)
     else:
         c, store = config(root)
         if a.cmd == 'verify':
@@ -842,12 +872,21 @@ def main():
         elif a.cmd == 'inspect':
             _, out = inspect(root, a.previous)
         elif a.cmd == 'recover-previous':
-            with lock(store):
+            from monitor import resume_guard
+            with resume_guard(root, store), lock(store):
+                _preservation_owner_guard(root, c, store, owner_claim)
                 current = read(store / 'latest.json')
                 previous = current.get('previous')
                 if not previous:
                     raise Fault('No previous valid checkpoint')
                 check_generation(store, previous)
+                stop = store / 'automatic-stop.json'
+                if stop.exists() or stop.is_symlink():
+                    marker = read(stop)
+                    if (not a.owner or marker.get('schema_version') != 1
+                            or marker.get('task_id') != c['task_id'] or marker.get('project_id') != c['project_id']
+                            or marker.get('checkpoint_status') != 'verified' or marker.get('checkpoint_id') != previous['id']):
+                        raise Fault('A paused task may recover only its verified pinned generation with the existing owner; no pointer changed')
                 atomic(store / ('recovery-' + uuid.uuid4().hex + '.json'), encoded({'discarded_pointer': current, 'reason': redact(a.reason), 'at': now()}))
                 atomic(store / 'latest.json', encoded(previous))
                 out = {'recovered': previous['id'], 'worktree_changed': False}

@@ -10,6 +10,7 @@
     "docs/RELEASE-0.7.3.md": "docs/RELEASE-0.7.3.md",
     "docs/RELEASE-0.7.4.md": "docs/RELEASE-0.7.4.md",
     "docs/RELEASE-0.7.5.md": "docs/RELEASE-0.7.5.md",
+    "docs/RELEASE-0.7.6.md": "docs/RELEASE-0.7.6.md",
     "docs/public-readme.md": "docs/public-readme.md",
     "examples/check_json_result.py": "examples/check_json_result.py",
     "examples/router_demo.py": "examples/router_demo.py",
@@ -89,6 +90,7 @@
     "tests/test_router_policy.py": "tests/test_router_policy.py",
     "tests/test_router_runtime.py": "tests/test_router_runtime.py",
     "tests/test_runtime.py": "tests/test_runtime.py",
+    "tests/test_stopped_checkpoint_cli.py": "tests/test_stopped_checkpoint_cli.py",
     "tests/test_stopped_shutdown.py": "tests/test_stopped_shutdown.py",
     "validation/REPORT.md": "validation/REPORT.md",
     "validation/results.json": "validation/results.json"

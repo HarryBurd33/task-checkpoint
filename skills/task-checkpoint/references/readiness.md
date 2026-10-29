@@ -81,3 +81,20 @@ current evidence, verify jobs and existing ownership, then request bounded
 preservation retry. Missing input is highlighted on every SessionStart, including
 existing auto-enrolled bindings. Resume still requires a verified generation,
 fresh resources, current authorization and the normal ownership gate.
+
+## Preserve reconciled input without moving past a pause
+
+For an existing active owner, the supported checkpoint command with the bound
+input.json and exact --owner routes a stopped save through the same fenced
+preservation path as the collector. It preserves the previous generation and
+updates the stop pointer to the verified new generation. The pause, incident,
+reserve and lease remain; no task command is executed. Prepare a new review
+after this save, then explicitly resume only when authorization, jobs and
+resources pass. Do not reuse an old review after a new generation.
+
+An alternate input, missing/foreign owner, uncertain worker, terminal lifecycle
+or exhausted preservation retries fails closed. For verified vacant ownership,
+use the existing owner-aware retry procedure; do not acquire a lease just to
+save. Direct snapshot calls cannot advance a persistent stop, including when a
+stop arrives during capture. recover-previous may restore the actual verified
+pinned generation, but cannot rewind a paused task away from its stop.

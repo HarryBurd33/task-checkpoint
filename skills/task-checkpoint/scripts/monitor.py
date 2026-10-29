@@ -71,7 +71,8 @@ def _source(root, store, marker):
     return task, evidence
 
 
-def _preserve(root, store, binding, marker, signals, assessment):
+def _preserve(root, store, binding, marker, signals, assessment, preservation_owner=None):
+    cp._preservation_owner_guard(root, binding, store, preservation_owner)
     # Count failed source/repository inspection as preservation attempts too.
     # Otherwise a broken input or nested repository retries forever each tick.
     attempts = marker.get('preservation_attempts', 0)
@@ -89,10 +90,11 @@ def _preserve(root, store, binding, marker, signals, assessment):
     if was_verified and marker.get('source_digest') == digest and marker.get('repository_fingerprint') == fingerprint:
         saved, _ = cp.latest(store)
         if saved['id'] == marker.get('checkpoint_id'):
+            cp._preservation_owner_guard(root, binding, store, preservation_owner)
             marker.update(checkpoint_status='verified', preservation_attempts=0)
             cp.atomic(store / 'automatic-stop.json', cp.encoded(marker))
             return {'task_id': binding['task_id'], 'status': 'already-preserved', 'checkpoint_id': saved['id']}
-    task['observations'].append('Automatic usage checkpoint: fresh observed resource threshold reached; stop ordinary work. No job cancellation, model switch, release or automatic resume was performed.')
+    task['observations'].append('Automatic usage checkpoint: preserving the existing resource stop; current readings and explicit reviewed resume are still required. No job cancellation, model switch, release or automatic resume was performed.')
     task['observations'].append('Automatic source provenance: ' + json.dumps(source, sort_keys=True) + '. This captures the last maintained semantic state; later conversation details may be absent.')
     if active:
         ident = str(active.get('id', 'unidentified-router-run'))
@@ -102,10 +104,11 @@ def _preserve(root, store, binding, marker, signals, assessment):
     temporary = store / ('monitor-input-' + uuid.uuid4().hex + '.json')
     try:
         cp.atomic(temporary, cp.encoded(task))
-        saved = cp.checkpoint(root, temporary, 'low-resource')
+        saved = cp.checkpoint(root, temporary, 'low-resource', preservation_incident=marker.get('incident_id'), preservation_owner=preservation_owner)
         verified, _ = cp.latest(store)
         if verified['id'] != saved['id']:
             raise cp.Fault('Checkpoint changed during monitor verification; inspect concurrent boundary')
+        cp._preservation_owner_guard(root, binding, store, preservation_owner)
         marker.update(checkpoint_status='verified', checkpoint_id=saved['id'], verified_at=cp.now(),
                       source_digest=digest, repository_fingerprint=fingerprint, source=source)
         marker.pop('failure_type', None)
@@ -115,6 +118,51 @@ def _preserve(root, store, binding, marker, signals, assessment):
                 'handoff': saved['handoff'], 'semantic_source': source['kind']}
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def preserve_stopped(root, source, owner):
+    """Save reconciled input and repin the same stop; never acquire or resume."""
+    import router
+    binding, store = cp.config(root)
+    if not isinstance(owner, str) or not owner.strip():
+        raise cp.Fault('Stopped preservation requires the exact existing --owner; no lease is acquired')
+    if source.is_symlink() or source.resolve() != (store / 'input.json').resolve():
+        raise cp.Fault('Stopped preservation uses only the bound input.json; no alternate task input')
+    # Match collector/resume -> router -> snapshot fence order. No ordinary
+    # save can promote a generation between the stop check and repinning.
+    with resume_guard(root, store), router.exclusive_store(root):
+        marker = _marker(store, binding)
+        if marker is None:
+            raise cp.Fault('Stop changed; inspect before preservation')
+        if marker.get('checkpoint_status') not in ('verified', 'pending', 'failed'):
+            raise cp.Fault('Unknown preservation status; inspect the retained stop')
+        if reserve._lifecycle(store, binding) not in (None, 'active'):
+            raise cp.Fault('Terminal task lifecycle cannot be revived by preservation')
+        router.state(root)
+        claim = reserve._owner_gate(root, binding, store, owner)
+        if claim is None:
+            raise cp.Fault('Stopped preservation requires an existing owner lease; use owner-aware retry for verified vacancy')
+        if marker.get('checkpoint_status') == 'verified' and cp.latest(store)[0]['id'] != marker.get('checkpoint_id'):
+            raise cp.Fault('Pinned generation already differs; reconcile before further preservation')
+        attempts = marker.get('preservation_attempts', 0)
+        if type(attempts) is not int or attempts < 0:
+            raise cp.Fault('Invalid preservation attempt count; inspect the retained stop')
+        if attempts >= 3:
+            raise cp.Fault('Preservation retry limit reached; repair the cause and use owner-aware retry-preservation')
+        signals = current_signals(root)
+        assessment = reserve.assess(root, account_scope(signals, marker))
+        try:
+            result = _preserve(root, store, binding, marker, signals, assessment, preservation_owner=claim)
+        except Exception as exc:
+            marker.update(checkpoint_status='failed', failure_type=type(exc).__name__, failed_at=cp.now())
+            cp.atomic(store / 'automatic-stop.json', cp.encoded(marker))
+            raise
+        _, folder = cp.latest(store)
+        return dict(result, saved=result['status'] == 'checkpoint-verified',
+                    id=result['checkpoint_id'], preservation_only=True,
+                    handoff=str(root / 'HANDOFF.md') if binding.get('root_handoff') else str(folder / 'HANDOFF.md'),
+                    canonical_handoff=str(folder / 'HANDOFF.md'), state=str(folder / 'state.json'),
+                    stop_normal_work=True, automatic_resume=False)
 
 
 def account_scope(signals, marker):

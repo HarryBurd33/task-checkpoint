@@ -3,7 +3,7 @@ name: task-checkpoint
 description: Preserve unfinished Codex work for explicit resumption across chats, accounts or devices. Use for checkpoint now, save and stop, prepare a handoff, explicit resume, fresh low account allowance on an enabled project, automatic enrollment on an enabled account, or a current task-local remaining-allowance choice. A readiness check may notify after reset; it never resumes task implementation.
 license: MIT
 metadata:
-  version: "0.7.5"
+  version: "0.7.6"
 ---
 
 # Task checkpoint
@@ -108,7 +108,11 @@ authorization and either the exact active lease or explicit verified vacancy.
 Retry grants three save attempts; it never clears the stop or resumes work. Native `Bash` and `exec_command`
 names use identical strict scope/argument checks. There is no `checkpoint.py
 review`: use `reserve.py prepare-review` for normal recovered-usage review or a
-pending-grant review. Normal recovery requires no grant; it preserves the pause
+pending-grant review. While paused, an exact-owner checkpoint save uses fenced preservation to keep the
+stop and latest generation aligned. Keep reconciled input truthful, save with the
+existing owner, then prepare a fresh review; saving never resumes work. Do not
+restore an older generation unless it is the verified generation pinned by the stop.
+Normal recovery requires no grant; it preserves the pause
 until explicit reviewed resume. Never resume a mismatched task to unblock
 repair. Ordinary commands, chains and shell substitutions stay denied for the
 stopped task. This is a cooperative workflow guard, not an OS security sandbox.

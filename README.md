@@ -1,4 +1,6 @@
-# task-checkpoint 0.7.5
+# task-checkpoint 0.7.6
+
+Version 0.7.6 routes same-owner stopped checkpoint saves through the existing fenced preservation path, keeping the stop and saved generation aligned. Raw snapshots and rewinding away from a pinned stop fail closed. Saving never resumes work or replaces ownership.
 
 Version 0.7.5 fixes stopped-chat compaction deadlocks and read-only diagnosis before a first checkpoint. Persistent pauses still block ordinary tools and require explicit reviewed resume. Missing semantic input is reported on every startup.
 Paused recovery can read the verified handoff and ask the user for clarification.

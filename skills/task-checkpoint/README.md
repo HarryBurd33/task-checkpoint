@@ -1,4 +1,6 @@
-# Task checkpoint 0.7.5
+# Task checkpoint 0.7.6
+
+Version 0.7.6 routes same-owner stopped checkpoint saves through the existing fenced preservation path, keeping the stop and saved generation aligned. Raw snapshots and rewinding away from a pinned stop fail closed. Saving never resumes work or replaces ownership.
 
 Version 0.7.5 keeps context compaction reachable during a pause, diagnoses a missing first checkpoint through read-only maintenance, and reminds existing bindings to maintain semantic input. Ordinary tools still require explicit reviewed recovery.
 Use `maintenance.py --root PROJECT handoff` for the verified canonical handoff

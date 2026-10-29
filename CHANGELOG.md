@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.6
+
+- Route an exact owner's supported checkpoint save during a persistent pause through the existing fenced preservation path. Keep the stop and latest verified generation aligned without resuming or replacing ownership.
+- Reject raw snapshots that could advance a paused task, checking both capture and promotion. Require the same exact owner lease at both boundaries for explicit stopped saves; automatic collector preservation retains its verified vacant-owner path.
+- Recover a previous checkpoint during a stop only when it is the verified generation pinned by that stop. Recheck the original owner lease after acquiring the recovery fence.
+- Preserve retry limits, active-worker gates, pending grant anchors, prior generations and explicit reviewed resume. Do not change native hook trust, OS permissions or collector configuration.
+
 ## 0.7.5
 
 - Let native context compaction finish during a persistent stop; ordinary task tools remain denied until explicit reviewed resume.
