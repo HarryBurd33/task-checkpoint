@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.5
+
+- Let native context compaction finish during a persistent stop; ordinary task tools remain denied until explicit reviewed resume.
+- Diagnose missing semantic input and a missing first checkpoint without inventing progress, replacing ownership or clearing a stop. Report exact required tools and capability labels.
+- Read only the current binding's verified canonical handoff through scoped stopped maintenance. Keep user clarification questions available without granting execution.
+- Let subsequent reviews explicitly select the existing enabled collector registered to the exact task. Retain its reserve and local non-account observations, pin account/window/reset identities, and reread them before lease acquisition. Active stop and grant sources cannot be replaced.
+- Verify actual native desktop delivery, compaction and reviewed recovery separately from callback tests and command-accepted notifications.
+
 ## 0.7.4
 
 - Add opt-in exact receipt recovery for removed managed hooks. Require the existing account/profile, a complete canonical backup and a recognized installed Python; reject missing, changed, duplicated or wrong-event definitions.

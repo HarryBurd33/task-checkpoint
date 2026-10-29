@@ -622,11 +622,13 @@ def resume(root, review_path, owner, capabilities):
     from monitor import validate_resume, resume_guard, _acknowledge_resume_locked
     validate_resume(root, store)
     import reserve
+    reserve.validate_review_resources(root, resource)
     reserve.validate_resume(root)
     # Match collector -> task-store lock order and fail before changing the
     # lease, receipt or grant when the host sandbox cannot write its lock.
     with resume_guard(root, store), lock(store):
         validate_resume(root, store)
+        reserve.validate_review_resources(root, resource)
         reserve.validate_resume(root)
         if repo(root)['fingerprint'] != report['current_fingerprint']:
             raise Fault('Repository changed during resume')

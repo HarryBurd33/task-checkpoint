@@ -84,8 +84,8 @@ class StoppedShutdownTests(unittest.TestCase):
         self.assertEqual(value['state'], 'pending_resume')
         self.assertEqual(cp.latest(self.store)[0]['id'], pinned)
 
-    def test_stop_precompact_and_tool_boundaries_remain_blocked(self):
-        for name in ('Stop', 'PreCompact', 'PreToolUse', 'PostToolUse'):
+    def test_stop_and_tool_boundaries_remain_blocked(self):
+        for name in ('Stop', 'PreToolUse', 'PostToolUse'):
             with self.subTest(event=name):
                 self.assert_stopped_unchanged(name)
 
@@ -106,7 +106,7 @@ class StoppedShutdownTests(unittest.TestCase):
         self.assertTrue(any(job['id'] == 'uncertain-job' for job in saved_jobs))
         for name in ('SessionEnd', 'Interrupt', 'PreCompact', 'Stop'):
             with self.subTest(event=name):
-                self.assert_stopped_unchanged(name, informational=name in ('SessionEnd', 'Interrupt'))
+                self.assert_stopped_unchanged(name, informational=name in ('SessionEnd', 'Interrupt', 'PreCompact'))
         self.assertEqual(cp.latest(self.store)[0]['task']['jobs'], saved_jobs)
 
     def test_failed_or_pending_stops_are_not_implicitly_retried_at_shutdown(self):

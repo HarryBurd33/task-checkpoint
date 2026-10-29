@@ -13,7 +13,9 @@ import checkpoint as cp
 def halt(name, message):
     if name == 'PreToolUse':
         return {'systemMessage': message, 'hookSpecificOutput': {'hookEventName': name, 'permissionDecision': 'deny', 'permissionDecisionReason': message}}
-    if name in ('Interrupt', 'SessionEnd'):
+    # Blocking PreCompact aborts before the model can read recovery instructions.
+    # Context housekeeping is not task execution; PreToolUse still enforces stops.
+    if name in ('Interrupt', 'SessionEnd', 'PreCompact'):
         return {'systemMessage': message}
     return {'continue': False, 'stopReason': message}
 
@@ -100,7 +102,7 @@ def main(account_state=None):
                     '; checkpoint: ' + str(marker.get('checkpoint_id', 'not verified')) +
                     '. Ordinary work remains blocked until current authorization, fresh readings and reviewed resume succeed.'))
     if name == 'SessionStart':
-        return {'hookSpecificOutput': {'hookEventName': name, 'additionalContext': ('Automatic enrollment created a task binding. Maintain .checkpoint/input.json with real semantic progress before preservation. ' if enrolled and enrolled.get('status') == 'enrolled' else '') + 'Checkpoint integration is present. Read the task-checkpoint skill. Inspect and verify current authorization, artifacts, jobs and exclusive task ownership before implementation. This hook does not resume work.' + (' User-wide usage collection is configured. Use the approved router configuration for qualified bounded tasks and check fresh shared signals before dispatch.' if account_enabled else '')}}
+        return {'hookSpecificOutput': {'hookEventName': name, 'additionalContext': ('.checkpoint/input.json is missing. Maintain truthful semantic input from current task evidence before implementation; do not invent progress or permissions. If stopped, use read-only maintenance status and an authorized repair workspace; compaction never clears a stop. ' if not source.exists() else '') + 'Checkpoint integration is present. Read the task-checkpoint skill. Inspect and verify current authorization, artifacts, jobs and exclusive task ownership before implementation. This hook does not resume work.' + (' User-wide usage collection is configured. Use the approved router configuration for qualified bounded tasks and check fresh shared signals before dispatch.' if account_enabled else '')}}
     low = False
     signal_path = account_state / 'signals.json' if account_enabled else store / 'signals.json'
     if name in ('PreToolUse', 'PostToolUse', 'PreCompact', 'Stop'):

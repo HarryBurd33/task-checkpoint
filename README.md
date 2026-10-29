@@ -1,4 +1,9 @@
-# task-checkpoint 0.7.4
+# task-checkpoint 0.7.5
+
+Version 0.7.5 fixes stopped-chat compaction deadlocks and read-only diagnosis before a first checkpoint. Persistent pauses still block ordinary tools and require explicit reviewed resume. Missing semantic input is reported on every startup.
+Paused recovery can read the verified handoff and ask the user for clarification.
+Later reviews can explicitly select the existing registered collector, retaining
+its reserve and rechecking every quota window at resume. [Verification and limits](docs/RELEASE-0.7.5.md).
 
 Version 0.7.4 adds explicit recovery of missing managed hook receipts from exact
 installed definitions, separates hook registration from collector health, and

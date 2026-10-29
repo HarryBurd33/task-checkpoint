@@ -78,6 +78,7 @@ The native denial prints an exact copyable command using actual paths:
 
 ```sh
 python3 SKILL/scripts/maintenance.py --root PROJECT status
+python3 SKILL/scripts/maintenance.py --root PROJECT handoff
 python3 SKILL/scripts/maintenance.py --root PROJECT docs --name task-checkpoint
 python3 SKILL/scripts/maintenance.py --root PROJECT docs --name model-switcher
 python3 SKILL/scripts/maintenance.py --root PROJECT docs --name operator
@@ -88,7 +89,9 @@ python3 SKILL/scripts/reserve.py --root PROJECT grant --help
 ```
 
 `status` reports workspace, task, checkpoint/next action, owner, jobs/worker, stop
-and reserve without resuming. Confirm the intended task. Never grant or resume
+and reserve without resuming. `handoff` reads only this binding's verified canonical
+generation and checks task/project identity. User clarification tools remain available;
+their answers require the usual grant/review/resume procedure. Confirm the intended task. Never grant or resume
 an unrelated task just to unblock repair. Exact individual `cat` reads of the
 installed task-checkpoint/model-switcher SKILL.md and named recovery references
 are also allowed. Arbitrary reads, Python code, shell overrides, expansions,
@@ -142,6 +145,14 @@ incomplete preservation, wrong task/owner, uncertain current jobs/workers and
 changed checkpoint/repository state remain blocking. A disabled collector or
 stale signals must be reconciled through supported collection, never by writing
 invented readings. The helper cannot waive a checkpoint reconciliation issue.
+
+When a previous stop has already been acknowledged and no active stop or grant
+retains its source, add `--signals ACCOUNT-STATE/signals.json` to `prepare-review`.
+The source must be an enabled collector registering this exact task/workspace.
+Its configured guard and local non-account resource observations still apply.
+The review pins every account/window/reset and rereads that source at resume;
+low, stale, changed, or missing windows block acquisition. This option cannot
+replace an active stop or grant source and changes no collector configuration.
 
 ## Grant, prepare review, explicitly resume
 

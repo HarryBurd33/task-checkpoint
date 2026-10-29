@@ -407,12 +407,55 @@ def activate(root):
     cp.atomic(store / NAME, cp.encoded(value))
 
 
-def prepare_review(root, scope, source, evidence, owner=None):
+def review_signals(root, signals_path):
+    """Select an explicitly named live collector after a prior stop was acknowledged."""
+    from monitor import _binding
+    binding, store = cp.config(root)
+    path = Path(signals_path).resolve()
+    if path == (store / 'signals.json').resolve():
+        return cp.read(path)
+    grant = cp.read(store / NAME) if (store / NAME).exists() else None
+    if (store / 'automatic-stop.json').exists() or (grant and grant.get('state') != 'revoked'):
+        # Active stop/grant sources remain authoritative, including their windows.
+        raise cp.Fault('Use the existing stop/grant source; omit --signals')
+    config = cp.read(path.parent / 'config.json')
+    if path.name != 'signals.json' or config.get('enabled') is not True:
+        raise cp.Fault('Explicit review source must be an enabled registered collector')
+    records = [p for p in config.get('projects', []) if Path(p['root']).resolve() == root.resolve()]
+    if len(records) != 1:
+        raise cp.Fault('Collector must register this exact workspace once')
+    _binding(root, records[0])
+    raw = cp.read(path)
+    signals = telemetry.from_checkpoint_signals(raw)
+    signals['accounts'] = raw.get('accounts', {})
+    for record in signals['records']:
+        if record.get('kind') == 'codex_plan':
+            record['guard'] = config.get('guard_percent', 20)
+    local = store / 'signals.json'
+    if local.exists():
+        signals['records'] += [r for r in telemetry.from_checkpoint_signals(cp.read(local))['records']
+                               if r.get('kind') != 'codex_plan']
+    return signals
+
+
+def validate_review_resources(root, resource):
+    if 'signals_path' not in resource:
+        return
+    summary = assess(root, review_signals(root, resource['signals_path']), require_account=True)
+    if blocked(summary) or summary['statuses']['codex_plan'] != 'ok':
+        raise cp.Fault('Fresh adequate collector readings required at resume')
+    if _windows(summary) != _record_windows({'windows': resource.get('signal_windows', [])}):
+        raise cp.Fault('Collector account/window/reset changed after review')
+
+
+def prepare_review(root, scope, source, evidence, owner=None, signals_path=None):
     """Prepare normal recovery or pending-grant review; never resume task work."""
     if any(not isinstance(v, str) or not v.strip() for v in (scope, source, evidence)):
         raise cp.Fault('Current authorization scope/source and truthful resource evidence are required')
     binding, store, value = _load(root)
     pending = value is not None and value['state'] == 'pending_resume'
+    if pending and signals_path is not None:
+        raise cp.Fault('Pending grants retain their pinned source; omit --signals')
     if value is not None and value['state'] not in ('pending_resume', 'revoked'):
         raise cp.Fault('Reconcile the existing active allowance grant before preparing a recovery review')
     from monitor import current_signals, validate_resume as validate_stop, resume_guard
@@ -426,7 +469,7 @@ def prepare_review(root, scope, source, evidence, owner=None):
         validate_resume(root)
         validate_stop(root, store)
         if not pending:
-            signals = current_signals(root)
+            signals = review_signals(root, signals_path) if signals_path is not None else current_signals(root)
             summary = assess(root, signals, require_account=True)
             if blocked(summary) or summary['statuses']['codex_plan'] != 'ok':
                 raise cp.Fault('Fresh adequate readings under the normal reserve are required before review')
@@ -446,6 +489,10 @@ def prepare_review(root, scope, source, evidence, owner=None):
             'authorization': {'confirmed': True, 'scope': scope.strip(), 'source': source.strip()},
             'resources': {'adequate_for_bounded_action': True, 'evidence': evidence.strip(),
                           'observed_at': cp.now()}, 'resolutions': {}}
+        if signals_path is not None:
+            review['resources'].update(signals_path=str(Path(signals_path).resolve()),
+                signal_windows=[{'account_fingerprint': account, 'window': window, 'resets_at': reset}
+                                for (account, window), reset in sorted(_windows(summary).items())])
         path = store/('allowance-resume-review.json' if pending else 'review.json')
         if path.exists():
             cp.atomic(store/'review-history'/(uuid.uuid4().hex+'.json'), cp.content(path))
@@ -543,6 +590,7 @@ def build_parser():
     g.add_argument('--percent', type=float, help='Task-local remaining allowance percentage (0..100); requires --mode percent')
     g.add_argument('--signals', type=Path, required=True); g.add_argument('--reason', required=True); g.add_argument('--source', required=True)
     review = sub.add_parser('prepare-review'); review.add_argument('--scope',required=True); review.add_argument('--source',required=True); review.add_argument('--resources-evidence',required=True)
+    review.add_argument('--signals', type=Path, help='Existing registered collector signals after a previous stop was acknowledged')
     sub.add_parser('status'); r = sub.add_parser('revoke'); r.add_argument('--reason', required=True)
     for command in (g, review, r):
         command.add_argument('--owner', required=True)
@@ -554,7 +602,7 @@ def main():
     if a.command == 'configure': value = configure(root, a.percent, a.owner, a.reason, a.source)
     elif a.command == 'retire-policy': value = retire_policy(root, a.reason, a.source, owner=a.owner)
     elif a.command == 'grant': value = grant(root, a.mode, cp.read(a.signals), a.reason, a.source, signals_path=a.signals, owner=a.owner, percent=a.percent)
-    elif a.command == 'prepare-review': value = prepare_review(root,a.scope,a.source,a.resources_evidence,owner=a.owner)
+    elif a.command == 'prepare-review': value = prepare_review(root,a.scope,a.source,a.resources_evidence,owner=a.owner,signals_path=a.signals)
     elif a.command == 'revoke': value = revoke(root, a.reason, owner=a.owner)
     else: value = status(root)
     print(json.dumps(value, indent=2))

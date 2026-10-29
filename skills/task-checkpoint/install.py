@@ -12,7 +12,7 @@ import tempfile
 import zipfile
 
 ROOT=Path(__file__).resolve().parent
-VERSION='0.7.4'
+VERSION='0.7.5'
 
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def files(root):return {p.relative_to(root).as_posix():digest(p) for p in root.rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.name!='.install-receipt.json'}

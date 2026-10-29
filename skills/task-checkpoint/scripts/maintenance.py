@@ -27,7 +27,7 @@ VERBS = {
     'checkpoint.py': {'inspect', 'verify', 'policy', 'checkpoint', 'resume',
                       'owner-check', 'release', 'recover-previous', 'refresh-handoff'},
     'reserve.py': {'status', 'grant', 'prepare-review', 'revoke', 'configure', 'retire-policy'},
-    'maintenance.py': {'status', 'docs', 'signals'},
+    'maintenance.py': {'status', 'docs', 'signals', 'handoff'},
     'readiness.py': {'retry-preservation'},
 }
 
@@ -39,6 +39,7 @@ def build_parser():
     sub = p.add_subparsers(dest='command', required=True)
     sub.add_parser('status')
     sub.add_parser('signals')
+    sub.add_parser('handoff')
     doc = sub.add_parser('docs'); doc.add_argument('--name', choices=sorted(DOCS), required=True)
     return p
 
@@ -83,6 +84,9 @@ def classify(event, root, account_state=None):
     name = event.get('tool_name', '').removeprefix('tools.')
     if name in ('mcp__codex_app__get_usage_limits', 'mcp__codex_app.get_usage_limits'):
         return True, 'quota read'
+    if name in ('request_user_input', 'request_user_input_async',
+                'functions.request_user_input', 'functions.request_user_input_async'):
+        return True, 'user clarification only; no task execution or resume'
     if re.sub(r'[^a-z0-9]', '', name.lower()) not in ('execcommand', 'functionsexeccommand', 'toolsexeccommand', 'bash'):
         return False, 'ordinary tool name=' + repr(name) + '; maintenance uses exec_command'
     inputs = event.get('tool_input', {})
@@ -204,16 +208,26 @@ def _account_command(args, account_state):
 def status(root, account_state=None):
     import reserve
     binding, store = cp.config(root)
-    try:
-        saved, report = cp.inspect(root)
-    except (cp.Fault, OSError, ValueError) as exc:
-        # Diagnosis must stay available when current-worktree reconciliation
-        # fails. Read the verified generation; do not weaken inspect/resume.
-        saved, folder = cp.latest(store)
-        report = {'checkpoint_id': saved['id'], 'task_id': saved['task_id'],
-                  'next_action': saved['task']['next_action'], 'handoff': str(folder/'HANDOFF.md'),
-                  'issues': ['current-worktree-inspection-failed: ' + str(exc)],
-                  'current_fingerprint': None, 'implementation_allowed': False}
+    saved = None
+    if not (store / 'latest.json').exists() and not (store / 'latest.json').is_symlink():
+        issues = ['no-verified-checkpoint']
+        if not (store / 'input.json').exists():
+            issues.append('semantic-input-missing')
+        report = {'checkpoint_id': None, 'task_id': binding['task_id'],
+                  'next_action': None, 'handoff': None, 'issues': issues,
+                  'current_fingerprint': None, 'implementation_allowed': False,
+                  'recovery': 'Review current task evidence, jobs and ownership in an authorized repair workspace; maintain truthful input, repair preservation and use explicit reviewed resume. No progress is reconstructed.'}
+    else:
+        try:
+            saved, report = cp.inspect(root)
+        except (cp.Fault, OSError, ValueError) as exc:
+            # Diagnosis must stay available when current-worktree reconciliation
+            # fails. Read the verified generation; do not weaken inspect/resume.
+            saved, folder = cp.latest(store)
+            report = {'checkpoint_id': saved['id'], 'task_id': saved['task_id'],
+                      'next_action': saved['task']['next_action'], 'handoff': str(folder/'HANDOFF.md'),
+                      'issues': ['current-worktree-inspection-failed: ' + str(exc)],
+                      'current_fingerprint': None, 'implementation_allowed': False}
     ownership = cp.Ownership(root, binding, store)
     try:
         current = ownership.value(ownership.tip())
@@ -230,15 +244,29 @@ def status(root, account_state=None):
         policy['override'] = {k: v for k, v in policy['override'].items() if 'token' not in k}
     return {'workspace': str(root), 'binding': binding, 'checkpoint': report,
             'owner': owner, 'stop': marker, 'reserve': policy,
-            'jobs': saved['task']['jobs'], 'worker': journal.get('active'),
+            'jobs': saved['task']['jobs'] if saved else None, 'worker': journal.get('active'),
+            'required_capabilities': saved['task']['capabilities'] if saved else None,
+            'required_tools': saved['task']['tools'] if saved else None,
             'implementation_allowed': False,
             'next': shlex.join(['python3', str(SCRIPTS/'maintenance.py'), '--root', str(root), 'docs', '--name', 'reserve']),
             'instruction': 'Confirm this is the intended task. A different task or owner must not be resumed to unblock repair.'}
 
 
+def handoff(root):
+    """Read only the bound task's verified canonical handoff, never an arbitrary path."""
+    binding, store = cp.config(root)
+    saved, folder = cp.latest(store)
+    if saved['task_id'] != binding['task_id'] or saved['project_id'] != binding['project_id']:
+        raise cp.Fault('Checkpoint belongs to another task')
+    return cp.content(folder / 'HANDOFF.md').decode('utf-8')
+
+
 def main():
     args = build_parser().parse_args()
     root = args.root.resolve()
+    if args.command == 'handoff':
+        print(handoff(root))
+        return
     if args.command == 'docs':
         print(DOCS[args.name].read_text())
         return

@@ -3,7 +3,7 @@ name: task-checkpoint
 description: Preserve unfinished Codex work for explicit resumption across chats, accounts or devices. Use for checkpoint now, save and stop, prepare a handoff, explicit resume, fresh low account allowance on an enabled project, automatic enrollment on an enabled account, or a current task-local remaining-allowance choice. A readiness check may notify after reset; it never resumes task implementation.
 license: MIT
 metadata:
-  version: "0.7.4"
+  version: "0.7.5"
 ---
 
 # Task checkpoint
@@ -99,7 +99,9 @@ Then perform fresh receiving review/resumption. Revocation restores the configur
 
 While stopped, begin with `python3 /absolute/SKILL/scripts/maintenance.py --root
 /absolute/PROJECT status`, using the literal paths printed by the denial. Confirm
-task and owner before mutation. Named installed instructions, help, quota reads
+task and owner before mutation. Use the same command with `handoff` to read the
+verified canonical handoff before resume; it accepts no arbitrary file path.
+Named installed instructions, help, quota reads and user clarification questions
 and validated maintenance remain available. After repairing failed preservation,
 use the [owner-aware retry procedure](references/readiness.md) with current
 authorization and either the exact active lease or explicit verified vacancy.
@@ -110,6 +112,11 @@ pending-grant review. Normal recovery requires no grant; it preserves the pause
 until explicit reviewed resume. Never resume a mismatched task to unblock
 repair. Ordinary commands, chains and shell substitutions stay denied for the
 stopped task. This is a cooperative workflow guard, not an OS security sandbox.
+After an earlier stop was acknowledged and its source marker removed, normal
+`prepare-review --signals /absolute/ACCOUNT-STATE/signals.json` may select the
+existing enabled collector registered to this exact task. Its reserve and every
+account/window/reset are checked again at resume. It cannot replace an active
+stop or grant source. Questions and handoff reads never grant work or clear stops.
 
 ## Readiness after reset
 

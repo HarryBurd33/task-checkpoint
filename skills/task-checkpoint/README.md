@@ -1,4 +1,11 @@
-# Task checkpoint 0.7.4
+# Task checkpoint 0.7.5
+
+Version 0.7.5 keeps context compaction reachable during a pause, diagnoses a missing first checkpoint through read-only maintenance, and reminds existing bindings to maintain semantic input. Ordinary tools still require explicit reviewed recovery.
+Use `maintenance.py --root PROJECT handoff` for the verified canonical handoff
+while paused. Clarification tools remain available. After a prior stop was
+acknowledged, normal `prepare-review --signals ACCOUNT-STATE/signals.json` selects
+only an existing enabled collector registered to this task; quota windows and
+reserves are rechecked at resume. See the [reserve procedure](references/reserve.md).
 
 Version 0.7.4 adds explicit recovery of missing managed hook receipts from exact
 installed definitions, separates hook registration from collector health, and

@@ -66,3 +66,18 @@ healthy account reading, alter reset times, clear a ticket, grant OS permission 
 disable Focus just to obtain a notification. A user-confirmed display test verifies
 that observation, not future scheduler delivery or timing. This host's adapter was
 visibly confirmed by the user during 0.7.4 verification; no permission was changed.
+
+## Recovery must remain reachable
+
+A persistent stop blocks ordinary tools, not context compaction. PreCompact emits
+an informational stop reminder without continue:false and never advances the
+pinned checkpoint or grants resume authority. This lets the owning chat read
+maintenance instructions after compaction. PreToolUse still denies ordinary work.
+
+Before the first verified checkpoint, maintenance status reports a missing
+generation and semantic input explicitly; it does not invent progress or acquire
+a lease. An authorized repair workspace can reconstruct factual input from
+current evidence, verify jobs and existing ownership, then request bounded
+preservation retry. Missing input is highlighted on every SessionStart, including
+existing auto-enrolled bindings. Resume still requires a verified generation,
+fresh resources, current authorization and the normal ownership gate.
