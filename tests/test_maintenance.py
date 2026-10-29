@@ -60,10 +60,12 @@ class MaintenanceTests(unittest.TestCase):
             bare = shlex.join(['python3', str(Path(hook.__file__).parent/name), '--help'])
             for cmd in (bare, self.command(name, '--help')):
                 self.assertTrue(self.classify(cmd)[0], cmd)
-        for key in ('task-checkpoint', 'model-switcher', 'reserve', 'operator'):
+        for key in ('task-checkpoint', 'model-switcher', 'reserve', 'operator', 'readiness'):
             if key == 'model-switcher' and not maintenance.DOCS[key].is_file():
                 continue  # Optional companion need not be installed in public CI.
             self.assertTrue(self.classify(shlex.join(['cat', str(maintenance.DOCS[key])]))[0])
+        self.assertTrue(self.classify(self.command('maintenance.py', 'docs', '--name', 'readiness'))[0])
+        self.assertFalse(self.classify(self.command('readiness.py', 'retry-preservation', '--reason', 'fixture'))[0])
         self.assertTrue(self.classify(self.command('reserve.py', 'prepare-review', '--help'))[0])
         self.assertFalse(self.classify(self.command('checkpoint.py', 'review', '--help'))[0])
 

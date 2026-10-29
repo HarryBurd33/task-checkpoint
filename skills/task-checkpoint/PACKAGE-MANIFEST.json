@@ -34,7 +34,7 @@
     "scripts/hook.py": "04446de372fe86bf3947edc021e97c19dda5c930a1d709603ad72478f6c79a27",
     "scripts/local_text.py": "dc8b39358c4b19ad52e45b1beffd7fb29cedf7b738279785e66e0e6ca4c88de2",
     "scripts/local_text_worker.py": "6b32cf8f669b66a3bd5169928c02eedfe489c0a79f2e87ab2bd2d85f76c8d38c",
-    "scripts/maintenance.py": "9a75bb16b67aa031e63e89494c071e898d0d16ca294166420bf7b90069a047b6",
+    "scripts/maintenance.py": "5f4fd8a9bdcac62099215a12b4916087242c3e159c0c2bbc83eefce320e4ee45",
     "scripts/monitor.py": "d23189637f4ea8be368a59d034e25be84ffe39fe50183f92e2cff9e54695a038",
     "scripts/planner.py": "4f821452db8bdd480f7ada7720a044026c7221ffd66c2d46cf5b9a5fc4534ad5",
     "scripts/profiles.py": "1a1631544247658ce7b50fc635e8e736a78f3cfb76d89d413069549e1a7012d7",

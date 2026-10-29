@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Allow the installed readiness guide through both exact read-only maintenance document routes while work is stopped.
+- Keep mutating retry commands, ownership, reserve policies and native trust outside this exception; add focused regression coverage.
+
 ## 0.7.1
 
 - Preserve a stopped task's pinned checkpoint on Interrupt and SessionEnd. Shutdown no longer creates a new generation that invalidates a later reviewed continuation grant.

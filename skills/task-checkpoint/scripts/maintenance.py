@@ -20,6 +20,7 @@ DOCS = {
     'model-switcher': Path.home() / '.agents/skills/model-switcher/SKILL.md',
     'operator': SKILL / 'references/operator.md',
     'reserve': SKILL / 'references/reserve.md',
+    'readiness': SKILL / 'references/readiness.md',
     'readme': SKILL / 'README.md',
 }
 VERBS = {
