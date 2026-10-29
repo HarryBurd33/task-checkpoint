@@ -28,6 +28,7 @@ VERBS = {
                       'owner-check', 'release', 'recover-previous', 'refresh-handoff'},
     'reserve.py': {'status', 'grant', 'prepare-review', 'revoke', 'configure', 'retire-policy'},
     'maintenance.py': {'status', 'docs', 'signals'},
+    'readiness.py': {'retry-preservation'},
 }
 
 
@@ -62,6 +63,9 @@ def _parser(script):
     elif script == 'reserve.py':
         import reserve
         parser = reserve.build_parser()
+    elif script == 'readiness.py':
+        import readiness
+        parser = readiness.build_parser()
     else:
         parser = build_parser()
     def exact(p):

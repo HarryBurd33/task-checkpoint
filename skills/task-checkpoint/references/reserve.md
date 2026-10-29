@@ -117,6 +117,32 @@ stop or pinned by a grant must remain present, fresh and supported. Missing,
 stale, future, unsupported or changed account/window/reset readings cannot allow
 work. Other resource stops, ownership and uncertain jobs remain enforced.
 
+## Normal recovery after usage returns
+
+After fresh readings recover above the existing reserve, do not create an
+allowance grant or lower the reserve. With the current user's explicit same-task
+continuation instruction, verify task identity, actual jobs and ownership, then:
+
+~~~sh
+python3 SKILL/scripts/reserve.py --root PROJECT prepare-review --owner OWNER --scope 'Continue the same authorized bounded task after recovery' --source 'Current user message' --resources-evidence 'Fresh matching account windows, reconciled jobs and bounded next action'
+python3 SKILL/scripts/checkpoint.py --root PROJECT resume --review PROJECT/.checkpoint/review.json --owner OWNER --capability REQUIRED-CAPABILITY
+python3 SKILL/scripts/checkpoint.py --root PROJECT owner-check
+~~~
+
+Use the exact returned review path for an external store, and repeat/omit
+capabilities according to the actual task. Preparing a review alone never clears
+the stop, acquires ownership or permits work. It preserves any previous review
+under the private store's review-history directory. Pending-grant recovery below
+continues to return allowance-resume-review.json.
+
+Normal recovery uses the stopped task's live collector source rather than the
+old local low-usage snapshot. Every known affected account/window must have a
+fresh supported adequate reading; provider refusal, other resource stops,
+incomplete preservation, wrong task/owner, uncertain current jobs/workers and
+changed checkpoint/repository state remain blocking. A disabled collector or
+stale signals must be reconciled through supported collection, never by writing
+invented readings. The helper cannot waive a checkpoint reconciliation issue.
+
 ## Grant, prepare review, explicitly resume
 
 First verify preservation and the actual next action. `OWNER` means this task's

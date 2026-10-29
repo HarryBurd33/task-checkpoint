@@ -139,6 +139,12 @@ def account_scope(signals, marker):
 def affected_accounts(marker, assessment):
     marker['resource_accounts'] = sorted(set(marker.get('resource_accounts', [])) |
         {r['account_fingerprint'] for r in assessment['low'] if r.get('account_fingerprint')})
+    # Retain all observed windows for affected accounts, even healthy secondary windows.
+    windows = {(r['account_fingerprint'], r['window']) for r in marker.get('resource_windows', [])}
+    windows.update((r['account_fingerprint'], r['window']) for r in assessment['records']
+                   if r.get('kind') == 'codex_plan' and r.get('account_fingerprint') in marker['resource_accounts']
+                   and isinstance(r.get('window'), str) and r['window'])
+    marker['resource_windows'] = [{'account_fingerprint': a, 'window': w} for a, w in sorted(windows)]
 
 
 def evaluate_registered(state, signals):
@@ -242,17 +248,27 @@ def stop_for_signals(root, signals, account_state=None, require_account=False):
 
 
 def current_signals(root):
-    """Read the reviewed live source under an override, retaining local other resources."""
+    """Read the live stop/grant source, retaining local non-account resources."""
     binding, store = cp.config(root)
     local = store/'signals.json'
     path = local
+    grant_source = False
     if (store/'allowance-override.json').exists():
         grant = cp.read(store/'allowance-override.json')
         if grant.get('state') != 'revoked':
             path = Path(grant.get('signals_path', str(store/'allowance-override-signals.json')))
+            grant_source = True
+    marker = _marker(store, binding)
+    if not grant_source and marker and marker.get('account_state'):
+        path = Path(marker['account_state']) / 'signals.json'
     raw = cp.read(path)
     signals = telemetry.from_checkpoint_signals(raw)
     signals['accounts'] = raw.get('accounts', {})
+    if marker and marker.get('account_state') and path == Path(marker['account_state'])/'signals.json':
+        config = cp.read(Path(marker['account_state'])/'config.json')
+        for record in signals['records']:
+            if record.get('kind') == 'codex_plan':
+                record['guard'] = config.get('guard_percent', 20)
     if path.resolve() != local.resolve() and local.exists():
         signals['records'] += [r for r in telemetry.from_checkpoint_signals(cp.read(local))['records'] if r.get('kind') != 'codex_plan']
     return signals
@@ -266,6 +282,13 @@ def validate_resume(root, store):
         return
     if marker.get('checkpoint_status') != 'verified':
         raise cp.Fault('Automatic preservation is incomplete; repair saving and retry monitor before resume')
+    saved, _ = cp.latest(store)
+    if marker.get('checkpoint_id') != saved['id']:
+        raise cp.Fault('Automatic stop checkpoint changed; reconcile preservation before resume')
+    reserve._owner_gate(root, binding, store)
+    if (store/'input.json').exists() and any(j.get('status') not in ('completed', 'failed', 'cancelled')
+            for j in cp.read(store/'input.json').get('jobs', [])):
+        raise cp.Fault('Resolve uncertain input jobs before explicit resume')
     state = Path(marker['account_state']) if marker.get('account_state') else store
     config = cp.read(state / 'config.json') if marker.get('account_state') else {'guard_percent': 20}
     override = cp.read(store / 'allowance-override.json') if (store / 'allowance-override.json').exists() else None
@@ -280,6 +303,16 @@ def validate_resume(root, store):
     if (store / 'signals.json').exists():
         signals['records'] += [r for r in telemetry.from_checkpoint_signals(cp.read(store / 'signals.json'))['records'] if r.get('kind') != 'codex_plan']
     assessment = reserve.assess(root, account_scope(signals, marker), allow_pending=True)
+    expected = {(r['account_fingerprint'], r['window']) for r in marker.get('resource_windows', [])}
+    if not expected and (store/'signals.json').exists():
+        # Older stops retained their known windows only in the local snapshot.
+        expected = {(r['account_fingerprint'], r['window'])
+                    for r in telemetry.from_checkpoint_signals(cp.read(store/'signals.json'))['records']
+                    if r.get('kind') == 'codex_plan' and r.get('account_fingerprint') and r.get('window')}
+    observed = {(r.get('account_fingerprint'), r.get('window')) for r in assessment['records']
+                if r.get('kind') == 'codex_plan' and r.get('status') == 'ok'}
+    if expected - observed:
+        raise cp.Fault('Automatic stop persists: fresh readings for every stopped account window are required')
     if reserve.blocked(assessment) or not marker.get('low_kinds') or any(assessment['statuses'].get(k) != 'ok' for k in marker['low_kinds']):
         raise cp.Fault('Automatic stop persists: refresh all affected resource readings and explicitly resume after recovery')
 

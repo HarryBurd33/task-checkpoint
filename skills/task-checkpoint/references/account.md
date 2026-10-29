@@ -40,3 +40,14 @@ To remove activation, reconcile workers and stop/remove the managed service with
 Only unchanged managed hooks are removed. Unrelated hooks, private checkpoints and native trust records are retained. A customized hook/service is preserved for reconciliation. Claude Code compatibility is a separate assessment.
 
 Private exchange also records the resolved `gh_executable` when available. The collector prepends its directory with Git only in its own process and restores PATH afterward. A missing configured dependency fails without refreshing old signals. On packaged Windows apps, an interactive GitHub login may be isolated from native Task Scheduler. Verify actual scheduled exchange and authenticate the native user context independently when required; never copy credentials.
+
+## Observation-only restoration
+
+Set observation_only to true in the existing reviewed account configuration to
+collect fresh quota/model metadata and evaluate pause preservation without
+processing planned dispatch, scheduled task wakes, private publication or private
+receive. Existing project settings remain stored. The tick result records
+observation_only: true and empty scheduled/transfers/receives results. The
+existing enabled flag still controls collection, and the existing collector
+service must be verified independently. This mode neither clears task stops nor
+resumes work; explicit reviewed task recovery remains required.

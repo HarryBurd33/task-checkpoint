@@ -37,7 +37,22 @@ At most one notification attempt is made per incident. The runtime records deliv
 Automatic preservation is bounded to three failed attempts. After repairing the underlying storage/content problem, explicitly permit a new bounded attempt sequence:
 
 ```sh
-python3 SKILL/scripts/readiness.py --root PROJECT retry-preservation --reason 'Verified disk space and repaired denied path; retry preservation only'
+python3 SKILL/scripts/readiness.py --root PROJECT retry-preservation --owner OWNER --reason 'Verified disk space and repaired denied path for preservation retry only' --source 'Current user authorized preservation retry'
 ```
 
-This retains the stop and prior checkpoint. It cannot resume implementation. On failure provide the compact emergency handoff specified in SKILL.md. No save can reconstruct semantic state that was never maintained.
+Use the exact current owner with a matching local lease receipt. If the ownership
+ledger and receipt are both vacant, replace `--owner OWNER` with the explicit
+`--vacant-owner` option. Retry never acquires, releases or replaces a lease.
+An active/uncertain worker, foreign task/lifecycle/journal, corrupt prior
+checkpoint, occupied collector/writer fence, or missing authorization blocks it.
+Only an incomplete stop with one to three recorded attempts may reset; an unused
+retry grant and a verified checkpoint cannot be renewed this way.
+
+The command resets only the failed preservation counter and appends its repair
+authorization to the stop. The existing collector may make up to three further
+save attempts; this command neither installs a collector nor performs a save.
+It retains the stop, prior checkpoint, permissions, reserve and resume state.
+Uncertain jobs may be captured as uncertain for preservation, but retry never
+resumes or duplicates them. Explicit reviewed resume still requires reconciliation.
+On failure provide the compact emergency handoff specified in SKILL.md. No save
+can reconstruct semantic state that was never maintained.

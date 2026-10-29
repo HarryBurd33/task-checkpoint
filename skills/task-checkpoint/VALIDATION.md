@@ -1,3 +1,7 @@
+# Current release verification
+
+For 0.7.3, see the [release verification report](https://github.com/HarryBurd33/task-checkpoint/blob/main/docs/RELEASE-0.7.3.md). The earlier report below records its original evidence and limitations.
+
 # Version 0.7.1 verification
 
 The complete local suite passed **362 tests on Python 3.9.6 in 127.025 seconds**. Focused readiness tests (24) and resume-lock regressions (3) passed on Python 3.9.6 and 3.15; stopped-shutdown regressions (8) passed on both. The clean exported distribution passed 2 installer and 28 packaging/automation tests. Full source tests use isolated repositories and simulated resource/clock inputs. CI and native host checks are separate evidence.

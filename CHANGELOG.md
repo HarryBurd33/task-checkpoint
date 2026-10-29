@@ -1,9 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.7.3
+
+- Add normal recovered-quota review using fresh live collector readings, retaining prior reviews, stops and leases until explicit reviewed resume.
+- Keep all affected account windows, current jobs, preservation and ownership checks in normal recovery.
+- Add observation-only collection: preservation continues, while planned/scheduled dispatch and private send/receive stay disabled without deleting their configuration.
+- Require current authorization and an exact active owner lease or explicit verified vacancy for preservation retry. Keep collector/router/store fences, previous generations, uncertainty and stops intact; permit only three further saves.
+- Permit only the validated retry CLI through stopped-task maintenance. Notification/lifecycle commands remain outside the exception.
+
 
 - Allow the installed readiness guide through both exact read-only maintenance document routes while work is stopped.
-- Keep mutating retry commands, ownership, reserve policies and native trust outside this exception; add focused regression coverage.
+- Retain strict scope and shell-argument checks for maintenance; add focused regression coverage.
 
 ## 0.7.1
 

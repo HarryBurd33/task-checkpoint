@@ -1,4 +1,9 @@
-# Task checkpoint 0.7.1
+# Task checkpoint 0.7.3
+
+Version 0.7.3 supports normal recovery with fresh collector readings and explicit
+reviewed resume, observation-only collection without dispatch or transfer, and
+owner-aware bounded preservation retry. Stops, ownership and native permissions
+remain in force. See the [0.7.3 verification report](https://github.com/HarryBurd33/task-checkpoint/blob/main/docs/RELEASE-0.7.3.md).
 
 Preserve unfinished work before account allowance runs low. Verify the saved work in a new context, account or device, then continue only after an explicit resume instruction. Install this directory per-user to make the workflow available in local Codex chats. Background collection and notifications require separate opt-in configuration. Installing the skill never switches accounts.
 

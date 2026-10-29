@@ -81,6 +81,35 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(cp.read(self.state / 'signals.json')['records'][0]['guard'], 20)
         self.assertEqual(result['scheduled'], [])
 
+    def test_collection_only_keeps_monitoring_and_preserves_dispatch_configuration(self):
+        config = cp.read(self.state/'config.json')
+        config['observation_only'] = True
+        config['projects'] = [{'root': str(self.root), 'task_id': 'fixture',
+            'project_id': 'fixture/project', 'planned_dispatch': True,
+            'scheduled_dispatch': True, 'private_transfer': {'repository': 'fixture/project'},
+            'private_receive': {'repository': 'fixture/project'}}]
+        cp.atomic(self.root/'.checkpoint/config.json', cp.encoded({'schema_version': 1,
+            'task_id': 'fixture', 'project_id': 'fixture/project', 'ownership': 'local'}))
+        cp.atomic(self.root/'.checkpoint/plan-approval.json', b'{}')
+        cp.atomic(self.state/'config.json', cp.encoded(config))
+        before = (self.state/'config.json').read_bytes()
+        with mock.patch('codex_probe.probe', return_value=self.reading()), \
+             mock.patch('monitor.evaluate_registered', return_value={'projects': []}) as preserve, \
+             mock.patch('planner.boundary', return_value={'status': 'unexpected-dispatch'}) as planned, \
+             mock.patch('router.wake') as scheduled, \
+             mock.patch('transfer.publish', return_value={'status': 'unexpected-publish'}) as publish, \
+             mock.patch('transfer.receive_latest', return_value={'status': 'unexpected-receive'}) as receive:
+            result = account.tick(self.state)
+        preserve.assert_called_once()
+        for action in (planned, scheduled, publish, receive):
+            action.assert_not_called()
+        self.assertTrue(result['observation_only'])
+        self.assertEqual(result['scheduled'], [])
+        self.assertEqual(result['transfers'], [])
+        self.assertEqual(result['receives'], [])
+        self.assertEqual((self.state/'config.json').read_bytes(), before)
+        self.assertEqual(cp.read(self.state/'signals.json')['records'][0]['remaining'], 14)
+
     def test_tick_resolves_git_without_scheduler_path_and_restores_environment(self):
         config = cp.read(self.state / 'config.json')
         config['git_executable'] = str(Path(sys.executable).resolve())

@@ -154,9 +154,13 @@ def tick(state):
             status = {'last_success': cp.now(), 'source': observed['source'], 'auth_type': 'chatgpt',
                       'telemetry': telemetry.assess(signals), 'preservation': preservation, 'scheduled': [],
                       'dependency_errors': dependency_errors}
+            dispatch_projects = config['projects']
+            if config.get('observation_only') is True:
+                status['observation_only'] = True
+                dispatch_projects = []
             failed_tasks = {item.get('task_id') for item in preservation.get('projects', [])
                             if item.get('status') == 'preservation-failed'}
-            for project in config['projects']:
+            for project in dispatch_projects:
                 try:
                     if preservation_error or project.get('task_id') in failed_tasks:
                         raise cp.Fault('Preservation could not be evaluated; no work dispatched')
@@ -186,7 +190,7 @@ def tick(state):
             if profile_status is not None:
                 status['account_profiles'] = profile_status['profiles']
             status['transfers'] = []
-            for project in config['projects']:
+            for project in dispatch_projects:
                 if not project.get('private_transfer'):
                     continue
                 try:
@@ -200,7 +204,7 @@ def tick(state):
                 except Exception as exc:
                     status['transfers'].append({'task_id': project['task_id'], 'status': 'pending-retry', 'error_type': type(exc).__name__})
             status['receives'] = []
-            for project in config['projects']:
+            for project in dispatch_projects:
                 if not project.get('private_receive'):
                     continue
                 try:

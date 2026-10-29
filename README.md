@@ -1,4 +1,9 @@
-# task-checkpoint 0.7.1
+# task-checkpoint 0.7.3
+
+Version 0.7.3 supports normal recovery with fresh collector readings and explicit
+reviewed resume, observation-only collection without dispatch or transfer, and
+owner-aware bounded preservation retry. Stops, ownership and native permissions
+remain in force. See the [0.7.3 verification report](docs/RELEASE-0.7.3.md).
 
 [![Tests](https://github.com/HarryBurd33/task-checkpoint/actions/workflows/test.yml/badge.svg)](https://github.com/HarryBurd33/task-checkpoint/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)

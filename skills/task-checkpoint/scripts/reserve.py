@@ -408,30 +408,51 @@ def activate(root):
 
 
 def prepare_review(root, scope, source, evidence, owner=None):
-    """Write only a fresh, issue-free operator review; never execute task work."""
-    if any(not isinstance(v,str) or not v.strip() for v in (scope,source,evidence)):
+    """Prepare normal recovery or pending-grant review; never resume task work."""
+    if any(not isinstance(v, str) or not v.strip() for v in (scope, source, evidence)):
         raise cp.Fault('Current authorization scope/source and truthful resource evidence are required')
-    binding,store,value = _load(root)
-    if value is None or value['state'] != 'pending_resume':
-        raise cp.Fault('A pending explicit allowance grant is required')
-    validate_resume(root)
-    _owner_gate(root,binding,store,owner)
-    if owner is not None and value.get('intended_owner') and owner != value['intended_owner']:
-        raise cp.Fault('Allowance grant belongs to another intended owner')
-    saved,report = cp.inspect(root)
-    if report['issues']:
-        raise cp.Fault('Reconcile these checkpoint issues before preparing a review: '+', '.join(report['issues']))
-    if any(j['status'] not in ('completed','failed','cancelled') for j in saved['task']['jobs']):
-        raise cp.Fault('Resolve uncertain jobs before preparing a review')
-    review = {'checkpoint_id':saved['id'],'task_id':saved['task_id'],
-        'next_action':saved['task']['next_action']['description'],'verification':saved['task']['next_action']['verification'],
-        'current_fingerprint':report['current_fingerprint'],'observed_at':cp.now(),
-        'authorization':{'confirmed':True,'scope':scope.strip(),'source':source.strip()},
-        'resources':{'adequate_for_bounded_action':True,'evidence':evidence.strip(),'observed_at':cp.now()},'resolutions':{}}
-    path=store/'allowance-resume-review.json'
-    cp.atomic(path,cp.encoded(review))
-    return {'review':str(path),'next_action':saved['task']['next_action'],'implementation_allowed':False,
-        'requires':'Explicit checkpoint.py resume with current owner and required capabilities'}
+    binding, store, value = _load(root)
+    pending = value is not None and value['state'] == 'pending_resume'
+    if value is not None and value['state'] not in ('pending_resume', 'revoked'):
+        raise cp.Fault('Reconcile the existing active allowance grant before preparing a recovery review')
+    from monitor import current_signals, validate_resume as validate_stop, resume_guard
+    # Match resume/collector lock order. A review does not acquire a task lease.
+    with resume_guard(root, store), cp.lock(store):
+        _owner_gate(root, binding, store, owner)
+        if _lifecycle(store, binding) in TERMINAL:
+            raise cp.Fault('Task is completed/canceled/transferred; review cannot restore authority')
+        if pending and owner is not None and value.get('intended_owner') and owner != value['intended_owner']:
+            raise cp.Fault('Allowance grant belongs to another intended owner')
+        validate_resume(root)
+        validate_stop(root, store)
+        if not pending:
+            signals = current_signals(root)
+            summary = assess(root, signals, require_account=True)
+            if blocked(summary) or summary['statuses']['codex_plan'] != 'ok':
+                raise cp.Fault('Fresh adequate readings under the normal reserve are required before review')
+            _windows(summary)
+        saved, report = cp.inspect(root)
+        if report['issues']:
+            raise cp.Fault('Reconcile these checkpoint issues before preparing a review: '+', '.join(report['issues']))
+        jobs = list(saved['task']['jobs'])
+        if (store/'input.json').exists():
+            jobs += cp.read(store/'input.json').get('jobs', [])
+        if any(j.get('status') not in ('completed', 'failed', 'cancelled') for j in jobs):
+            raise cp.Fault('Resolve uncertain jobs before preparing a review')
+        review = {'checkpoint_id': saved['id'], 'task_id': saved['task_id'],
+            'next_action': saved['task']['next_action']['description'],
+            'verification': saved['task']['next_action']['verification'],
+            'current_fingerprint': report['current_fingerprint'], 'observed_at': cp.now(),
+            'authorization': {'confirmed': True, 'scope': scope.strip(), 'source': source.strip()},
+            'resources': {'adequate_for_bounded_action': True, 'evidence': evidence.strip(),
+                          'observed_at': cp.now()}, 'resolutions': {}}
+        path = store/('allowance-resume-review.json' if pending else 'review.json')
+        if path.exists():
+            cp.atomic(store/'review-history'/(uuid.uuid4().hex+'.json'), cp.content(path))
+        cp.atomic(path, cp.encoded(review))
+    return {'review': str(path), 'next_action': saved['task']['next_action'],
+            'implementation_allowed': False,
+            'requires': 'Explicit checkpoint.py resume with current owner and required capabilities'}
 
 
 

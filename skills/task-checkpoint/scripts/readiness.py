@@ -146,21 +146,88 @@ def update(root, signals, settings, now=None, deliver=None):
             return persist('delivery-failed',reason=type(exc).__name__ + ': ' + str(exc),manual_fallback='Read HANDOFF.md, recheck allowance, then explicitly request resume')
         return persist('notified',receipt=receipt,notified_at=current.isoformat())
 
-def main():
+def retry_preservation(root, reason, source, owner=None, vacant_owner=False):
+    """Authorize three more saves, without taking a lease or clearing the stop."""
+    if any(not isinstance(v, str) or not v.strip() for v in (reason, source)):
+        raise cp.Fault('Current repair reason and authorization source are required')
+    if (owner is None) == (not vacant_owner):
+        raise cp.Fault('Select exactly one current --owner or explicit --vacant-owner')
+    import monitor
+    import router
+    binding, store = cp.config(root)
+    if monitor._marker(store, binding) is None:
+        raise cp.Fault('No automatic stop exists; no retry state changed')
+    # Collector -> router -> store matches the existing preservation/worker fences.
+    with monitor.resume_guard(root, store), router.exclusive_store(root), cp.lock(store):
+        marker = monitor._marker(store, binding)
+        if marker is None:
+            raise cp.Fault('Automatic stop changed; inspect before retrying')
+        if reserve._lifecycle(store, binding) not in (None, 'active'):
+            raise cp.Fault('Task lifecycle is no longer active; retry cannot restore authority')
+        router.state(root)  # Reject foreign/malformed worker journals too.
+        claim = reserve._owner_gate(root, binding, store, owner)
+        if vacant_owner and claim is not None:
+            raise cp.Fault('Task has an owner; vacant-owner retry refused')
+        if owner is not None and claim is None:
+            raise cp.Fault('Named owner has no active lease; do not acquire one for retry')
+        if claim is not None:
+            receipt = cp.read(store/'owner.json')
+            if (claim.get('task_id') != binding['task_id'] or
+                    claim.get('scope') != binding['ownership'] or
+                    any(receipt.get(k) != claim.get(k) for k in ('task_id', 'owner', 'token'))):
+                raise cp.Fault('Owner ledger or receipt belongs to another task or lease')
+        attempts = marker.get('preservation_attempts')
+        if (marker.get('checkpoint_status') not in ('pending', 'failed') or
+                type(attempts) is not int or not 1 <= attempts <= 3 or
+                not isinstance(marker.get('incident_id'), str) or not marker['incident_id']):
+            raise cp.Fault('Retry requires an incomplete stop with one to three recorded attempts')
+        prior = None
+        if (store/'latest.json').exists():
+            saved, _ = cp.latest(store)
+            if any(saved[k] != binding[k] for k in ('project_id', 'task_id')):
+                raise cp.Fault('Prior checkpoint belongs to another task')
+            prior = saved['id']
+        lease = cp.Ownership(root, binding, store)
+        tip = lease.tip()
+        if tip and lease.value(tip).get('task_id') != binding['task_id']:
+            raise cp.Fault('Ownership ledger identity does not match this task')
+        # Revalidate the receipt immediately before the only persistent mutation.
+        if claim is not None and lease.check() != claim:
+            raise cp.Fault('Ownership changed during retry review')
+        if claim is None and (lease.value(tip).get('owner') or (store/'owner.json').exists()):
+            raise cp.Fault('Vacant ownership changed during retry review')
+        authorization = {'reason': reason.strip(), 'source': source.strip(), 'at': cp.now(),
+                         'owner': owner, 'vacant_owner': vacant_owner, 'owner_tip': tip,
+                         'previous_attempts': attempts, 'prior_checkpoint_id': prior}
+        history = marker.get('retry_history', [])
+        if not isinstance(history, list):
+            raise cp.Fault('Invalid preservation retry history')
+        marker['retry_history'] = history + [authorization]
+        marker['retry_authorization'] = authorization
+        marker['preservation_attempts'] = 0
+        cp.atomic(store/'automatic-stop.json', cp.encoded(marker))
+    return {'status': 'retry-enabled', 'automatic_resume': False, 'implementation_allowed': False,
+            'maximum_attempts': 3, 'prior_checkpoint_id': prior,
+            'next': 'Existing collector may retry preservation; stop and ownership are unchanged'}
+
+
+def build_parser():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--root',type=Path,required=True)
     subs=parser.add_subparsers(dest='command',required=True)
     check=subs.add_parser('check');check.add_argument('--signals',type=Path,required=True);check.add_argument('--notifier',choices=['macos','unsupported'],default='unsupported')
     life=subs.add_parser('lifecycle');life.add_argument('--status',required=True,choices=sorted(TERMINAL|{'active'}));life.add_argument('--reason',required=True)
     reset=subs.add_parser('retry-preservation');reset.add_argument('--reason',required=True)
-    args=parser.parse_args();root=args.root.resolve()
+    reset.add_argument('--source',required=True)
+    ownership=reset.add_mutually_exclusive_group(required=True)
+    ownership.add_argument('--owner');ownership.add_argument('--vacant-owner',action='store_true')
+    return parser
+
+
+def main():
+    args=build_parser().parse_args();root=args.root.resolve()
     if args.command=='lifecycle':result=lifecycle(root,args.status,args.reason)
     elif args.command=='retry-preservation':
-        _,store=cp.config(root)
-        with cp.lock(store):
-            marker=cp.read(store/'automatic-stop.json');marker['preservation_attempts']=0
-            marker['retry_authorization']={'reason':args.reason,'at':cp.now()}
-            cp.atomic(store/'automatic-stop.json',cp.encoded(marker))
-        result={'status':'retry-enabled','automatic_resume':False}
+        result=retry_preservation(root,args.reason,args.source,args.owner,args.vacant_owner)
     else:result=update(root,cp.read(args.signals),{'enabled':True,'notifier':args.notifier})
     print(json.dumps(result,indent=2))
 
