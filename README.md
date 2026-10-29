@@ -33,6 +33,8 @@ The default is 20% remaining across applicable account quota windows. Unknown te
 
 The agent must maintain semantic progress and check fresh usage at work boundaries. This skill cannot continuously interrupt inference, reconstruct unsaved conversation state, or guarantee a save after hard exhaustion. The read-only collector uses the authenticated Codex CLI app-server when available; no model turn or paid API call is made.
 
+Optional [native notifications and real-reset evidence](skills/task-checkpoint/references/notifications.md) are available when explicitly requested. They do not install services or resume work.
+
 See [commands](skills/task-checkpoint/references/commands.md) and [upgrade from 0.7](skills/task-checkpoint/references/upgrade.md). Verified snapshots preserve dirty, untracked and staged bytes while retaining the previous generation. Checkpoints are private task data; do not push them to a public repository. Cross-device handoffs require a private transfer and independently provisioned permissions.
 
 ## Development

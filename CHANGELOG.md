@@ -1,3 +1,10 @@
+# 0.8.2
+
+- Add optional one-shot macOS, Windows and Linux notification adapters with literal content, bounded execution and separate command/OS/display evidence.
+- Add a read-only quota-reset verifier requiring fresh same-account windows after every prior reset, plus simulated-clock regressions and Windows/Linux native CI checks.
+- Preserve existing installed file/directory ownership and permission modes before managed replacement; fail before replacement when preservation is impossible.
+- Retain 0.8.1 stale-project-cache fallback and the 0.8 simplification: no persistent pauses, new services, automatic task resume or tool-blocking hooks.
+
 # Changelog
 
 ## 0.8.1

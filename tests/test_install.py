@@ -44,7 +44,24 @@ class UpgradeTests(unittest.TestCase):
             self.assertTrue(list((skills/'.task-checkpoint-rollback').glob('0.7.6-*.zip')))
             result=subprocess.run(cmd+['--status'],check=True,capture_output=True,text=True)
             self.assertTrue(json.loads(result.stdout)['up_to_date'])
-            self.assertEqual(json.loads(result.stdout)['version'],'0.8.1')
+            self.assertEqual(json.loads(result.stdout)['version'],'0.8.2')
+
+    @unittest.skipUnless(sys.platform != 'win32', 'POSIX ownership and modes')
+    def test_upgrade_preserves_existing_directory_and_file_metadata(self):
+        import hashlib
+        import stat
+        with tempfile.TemporaryDirectory() as tmp:
+            skills=Path(tmp)/'skills';cmd=[sys.executable,str(INSTALL),'--skills-dir',str(skills)]
+            subprocess.run(cmd,check=True,capture_output=True)
+            target=skills/'task-checkpoint';receipt=target/'.install-receipt.json'
+            paths=[target,target/'scripts',target/'SKILL.md',receipt]
+            for p in paths:p.chmod(0o700 if p.is_dir() else 0o600)
+            before={p:(p.stat().st_uid,p.stat().st_gid,stat.S_IMODE(p.stat().st_mode)) for p in paths}
+            obsolete=target/'old.py';obsolete.write_text('managed rollback bytes')
+            value=json.loads(receipt.read_text());value['version']='fixture-old';value['files']['old.py']=hashlib.sha256(obsolete.read_bytes()).hexdigest();receipt.write_text(json.dumps(value))
+            subprocess.run(cmd+['--repair'],check=True,capture_output=True)
+            self.assertEqual({p:(p.stat().st_uid,p.stat().st_gid,stat.S_IMODE(p.stat().st_mode)) for p in paths},before)
+            self.assertFalse(obsolete.exists())
 
     def test_standalone_skill_installer_and_legacy_project_hook_retirement(self):
         import hashlib

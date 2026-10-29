@@ -3,7 +3,7 @@ name: task-checkpoint
 description: Save unfinished work and a verified Markdown handoff; continue until completion or a chosen remaining-usage threshold. Use for checkpoint, handoff, resume, or a direct threshold/exhaustion instruction. No persistent pauses or tool-blocking hooks.
 license: MIT
 metadata:
-  version: "0.8.1"
+  version: "0.8.2"
 ---
 
 # Task checkpoint
@@ -29,3 +29,5 @@ There is **no persistent pause**. “Continue” after allowance recovers or “
 Ownership still protects concurrent writers. Reuse an existing matching lease; `checkpoint.py resume --owner NAME` can claim a vacant task without a review file. Never steal an occupied lease. Pass `--owner NAME` for saves/usage changes when that task has an active claim. Release only after jobs are reconciled. These commands coordinate task data; current authorization and native permissions govern implementation.
 
 Read [the commands](references/commands.md) for setup, threshold controls and manual cross-device transfer, and [the upgrade guide](references/upgrade.md) for 0.7 migration. The optional collector only reads quota; it never resumes implementation or changes ownership.
+
+For explicitly requested notifications or real reset verification, read [optional delivery and reset checks](references/notifications.md). These one-shot tools never resume implementation or install a scheduler.

@@ -1,4 +1,4 @@
-# Validation for 0.8.1
+# Validation for 0.8.2
 
 The focused regression suite passes 61 tests on local macOS/Python. It retains snapshot integrity, interrupted promotion, root handoff preservation, staged/unstaged/binary artifacts, previous-generation recovery and competing remote owners. Tests for retired pause/grant/router behavior are replaced by tests of the 0.8 contract.
 
@@ -7,3 +7,5 @@ New checks cover direct 20/10/custom/zero thresholds, exhaustion override, expli
 Run `python3 -m unittest discover -s tests -v`. Run `python3 scripts/check_release.py` for package hashes and public-file checks. CI runs the same suite on Linux and macOS. Python tests do not prove a continuously running model will invoke the skill correctly; monitoring remains cooperative. Actual provider exhaustion and a second physical device are not deliberately exercised. No native hook or new background service is required.
 
 The 0.8.1 quota-source regression adds eight cases: stale/empty local caches, fresh collector low limits, fresh local precedence, account mismatch, explicit collector selection, local non-quota limits, all quota windows, and both sources unknown. The unchanged 0.8.0 source failed four of these cases; the repaired source passes all eight.
+
+Version 0.8.2 adds adversarial notification-input tests, simulated reset-window tests, metadata-preserving upgrade checks and native Windows/Linux CI probes. Actual user-visible notification display and a future real account reset remain distinct observations.

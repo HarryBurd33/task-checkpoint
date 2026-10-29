@@ -26,3 +26,30 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Verify distributable files
         run: python scripts/check_release.py
+
+  notification-adapters:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Test notification input, unavailable sessions and bounded failures
+        run: python -m unittest discover -s tests -p test_notifications.py -v
+      - name: Test simulated quota reset transitions without task writes
+        run: python -m unittest discover -s tests -p test_quota_reset.py -v
+      - name: Install ephemeral Linux runner desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnotify-bin dunst dbus-x11 xvfb xauth
+      - name: Exercise native Linux notification daemon
+        if: runner.os == 'Linux'
+        run: xvfb-run -a dbus-run-session -- python scripts/check_notifications.py
+      - name: Exercise Windows native API and interactive-session handling
+        if: runner.os == 'Windows'
+        run: python scripts/check_notifications.py

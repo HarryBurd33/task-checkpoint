@@ -3,6 +3,8 @@
 import argparse
 import hashlib
 import json
+import os
+import stat
 from pathlib import Path
 import shutil
 import sys
@@ -10,10 +12,29 @@ import tempfile
 import zipfile
 
 ROOT=Path(__file__).resolve().parent
-VERSION='0.8.1'
+VERSION='0.8.2'
 
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def files(root):return {p.relative_to(root).as_posix():digest(p) for p in root.rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.name!='.install-receipt.json'}
+
+def preserve_metadata(old, stage):
+    """Fail before replacement if an existing owner or mode cannot be retained."""
+    for path in [stage, *stage.rglob('*')]:
+        prior = old / path.relative_to(stage)
+        if not prior.exists():
+            continue
+        if prior.is_symlink() or path.is_symlink():
+            raise RuntimeError('Linked installed metadata path preserved; compare manually')
+        expected = prior.stat()
+        if os.name == 'posix':
+            actual = path.stat()
+            if (actual.st_uid, actual.st_gid) != (expected.st_uid, expected.st_gid):
+                os.chown(path, expected.st_uid, expected.st_gid)
+        shutil.copystat(prior, path)
+        actual = path.stat()
+        if stat.S_IMODE(actual.st_mode) != stat.S_IMODE(expected.st_mode) or os.name == 'posix' and (actual.st_uid, actual.st_gid) != (expected.st_uid, expected.st_gid):
+            raise RuntimeError('Existing metadata could not be preserved; installation not replaced')
+
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
@@ -56,6 +77,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix='.task-checkpoint-stage-',dir=a.skills_dir) as d:
             stage=Path(d)/'task-checkpoint';shutil.copytree(ROOT/'skills/task-checkpoint',stage,ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
             (stage/'.install-receipt.json').write_text(json.dumps({'version':VERSION,'files':files(stage)},indent=2)+'\n')
+            if target.exists():preserve_metadata(target, stage)
             old=Path(d)/'old'
             if target.exists():target.rename(old)
             try:stage.rename(target)
